@@ -1,6 +1,12 @@
-import { handleRunNow } from "../../../_lib/blog-handlers.js";
-
-export async function onRequest(context) {
-  // context = { request, env, params, waitUntil, next, data }
-  return handleRunNow(context);
+export async function onRequest({ request, env, ctx }) {
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      route: "/api/blog/run-now",
+      note: "Inline handler confirmed",
+    }),
+    {
+      headers: { "content-type": "application/json" },
+    }
+  );
 }
