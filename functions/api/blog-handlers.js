@@ -525,6 +525,11 @@ function buildAbstractPanelSvg() {
 async function autoGenerateVisualsForDraft(env, draft_id) {
       const did = String(draft_id || "").trim();
       if (!did) return { ok: false, error: "draft_id required" };
+        // ✅ Idempotency: if hero already exists, do nothing (prevents extra image spend)
+        const alreadyHasHero = await hasHeroAsset(env, did);
+        if (alreadyHasHero) {
+                  return { ok: true, draft_id: did, generated: [], skipped: ["hero_already_present"] };
+        }
       const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
           SELECT draft_id, title, content_markdown FROM blog_drafts WHERE draft_id = ? LIMIT 1
             `).bind(did).first();
