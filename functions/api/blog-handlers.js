@@ -1101,7 +1101,7 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
       1) Title (H1)
       2) Immediately under H1 include: <!-- VISUAL:hero -->
       3) Intro (2 short paragraphs, no heading)
-      4) TL;DR (2\u20133 sentences)
+      4) No TL;DR, no summary, no recap, no key takeaways (ban list).
       5) 4\u20136 sections with H2 headings
       6) At least 3 "Amazement Moments"
       7) One practical checklist
