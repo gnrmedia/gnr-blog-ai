@@ -421,25 +421,41 @@ const generateMarkdownWithAI = async ({ env, prompt, system }) => {
 // AI IMAGE GENERATION + CLOUDFLARE IMAGES STORAGE
 // ============================================================
 async function openaiGenerateImageBase64({ env, prompt, size }) {
-      const k = env && env.OPENAI_API_KEY;
-      const apiKey = (k && typeof k.get === "function") ? await k.get() : k;
-      if (!apiKey) throw new Error("Missing OPENAI_API_KEY (needed for raster visuals)");
-      const model = env.OPENAI_IMAGE_MODEL || "gpt-image-1";
-      const res = await fetch("https://api.openai.com/v1/images/generations", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model, prompt, size: size || "1536x1024", n: 1 }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-              throw new Error(`OpenAI image error: ${data?.error?.message || res.statusText}`);
-      }
-      const first = data?.data?.[0] || {};
-      const b64 = first?.b64_json ? String(first.b64_json).trim() : null;
-      const imageUrl = first?.url ? String(first.url).trim() : null;
-      if (!b64 && !imageUrl) throw new Error("OpenAI image returned neither b64_json nor url");
-      if (!b64) throw new Error("OpenAI image returned no b64_json");
-      return { imageUrl, b64 };
+  const k = env && env.OPENAI_API_KEY;
+  const apiKey = (k && typeof k.get === "function") ? await k.get() : k;
+  if (!apiKey) throw new Error("Missing OPENAI_API_KEY (needed for raster visuals)");
+  const model = env.OPENAI_IMAGE_MODEL || "dall-e-3";
+  const isDalle = model.startsWith("dall-e");
+
+  // Build request body per model
+  const body = { model, prompt };
+  if (isDalle) {
+    // dall-e-2 / dall-e-3: needs response_format and n; size constraints differ
+    body.response_format = "b64_json";
+    body.n = 1;
+    body.size = (model === "dall-e-3")
+      ? (size === "1024x1024" || size === "1792x1024" || size === "1024x1792" ? size : "1792x1024")
+      : (size === "256x256" || size === "512x512" || size === "1024x1024" ? size : "1024x1024");
+  } else {
+    // gpt-image-1: no n param, always returns b64_json, flexible sizes
+    body.size = size || "1536x1024";
+  }
+
+  const res = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`OpenAI image error: ${data?.error?.message || res.statusText}`);
+  }
+  const first = data?.data?.[0] || {};
+  const b64 = first?.b64_json ? String(first.b64_json).trim() : null;
+  const imageUrl = first?.url ? String(first.url).trim() : null;
+  if (!b64 && !imageUrl) throw new Error("OpenAI image returned neither b64_json nor url");
+  if (!b64) throw new Error("OpenAI image returned no b64_json");
+  return { imageUrl, b64 };
 }
 
 async function cloudflareImagesUploadBase64({ env, b64, fileNameHint }) {
