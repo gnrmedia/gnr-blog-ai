@@ -1,5 +1,6 @@
 // functions/api/blog/draft/generate-ai.js
-import { requireAdmin, generateAiForDraft } from "../blog-handlers.js";
+import { requireAdmin, generateAiForDraft } from "../../blog-handlers.js";
+
 
 export async function onRequest(context) {
   const { request } = context;

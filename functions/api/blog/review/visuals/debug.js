@@ -1,4 +1,4 @@
-import { requireAdmin, getReviewVisualsDebug } from "../../../../blog-handlers.js";
+import { requireAdmin, getReviewVisualsDebug } from "../../../blog-handlers.js";
 
 export async function onRequest(context) {
   const { request } = context;
