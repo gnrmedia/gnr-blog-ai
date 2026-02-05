@@ -1,227 +1,303 @@
-// blog-handlers.js (SCAFFOLD ONLY)
-// ------- ---------------------------------------------------
-// Purpose:
-// - Central place for shared logic used by many route files.
-// - Keep route files tiny (parse + auth + call handler).
+// blog-handlers.js — Phase 1: Security + Response plumbing
+// -----------------------------------------------------------
+// Migrated from zlegacy-workers/blog-ai.worker.js
+// Phase 1 implements: requireAdmin, corsHeaders, jsonResponse,
+// errorResponse. All other handlers remain TODO stubs.
+// -----------------------------------------------------------
+
+// ============================================================
+// CORS (admin UI calls blog-api cross-origin)
+// Allow ONLY your admin site, and allow credentials (Access cookies)
+// ============================================================
+const CORS_ALLOWED_ORIGINS = new Set([
+    "https://admin.gnrmedia.global",
+    "https://gnr-admin.pages.dev",
+    "http://localhost:8788",
+    "http://localhost:3000",
+  ]);
+
+/**
+ * Build CORS response headers for a given request.
+ * Returns a headers object if the Origin is allowed, or null if not.
+ *
+ * @param {Object} context - Pages Function context (must have context.request)
+ *   OR a raw Request object (for convenience).
+ * @returns {Object|null} CORS headers object or null
+ */
+export function corsHeaders(context) {
+    const req = (context && context.request) ? context.request : context;
+    if (!req || typeof req.headers?.get !== "function") return null;
+
+  const origin = req.headers.get("Origin");
+    if (!origin || !CORS_ALLOWED_ORIGINS.has(origin)) return null;
+
+  const reqHeaders =
+        req.headers.get("Access-Control-Request-Headers") ||
+        "content-type,authorization";
+    const requestedMethod = (
+          req.headers.get("Access-Control-Request-Method") ||
+          req.method ||
+          ""
+        ).toUpperCase();
+    const allowMethods =
+          requestedMethod === "GET" ? "GET,OPTIONS" : "POST,OPTIONS";
+
+  return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": allowMethods,
+        "Access-Control-Allow-Headers": reqHeaders,
+        "Access-Control-Max-Age": "86400",
+        Vary: "Origin",
+  };
+}
+
+// ============================================================
+// JSON Response helper (with CORS)
+// ============================================================
+
+/**
+ * Return a JSON Response with CORS headers + content-type.
+ *
+ * @param {Object} context - Pages Function context
+ * @param {*} obj - JSON-serialisable payload
+ * @param {number} status - HTTP status code (default 200)
+ * @returns {Response}
+ */
+export function jsonResponse(context, obj, status = 200) {
+    const cors = corsHeaders(context);
+    return new Response(JSON.stringify(obj, null, 2), {
+          status,
+          headers: {
+                  "content-type": "application/json; charset=utf-8",
+                  ...(cors || {}),
+          },
+    });
+}
+
+/**
+ * Convenience: return a JSON error Response.
+ *
+ * @param {Object} context - Pages Function context
+ * @param {string} error - Short error message
+ * @param {number} status - HTTP status code (default 500)
+ * @param {Object} extra - Additional fields to include in body
+ * @returns {Response}
+ */
+export function errorResponse(context, error, status = 500, extra = {}) {
+    return jsonResponse(context, { ok: false, error, ...extra }, status);
+}
+
+// ============================================================
+// ADMIN AUTH (Cloudflare Access)
+// ============================================================
+// ENV vars (set in Pages > Settings > Environment variables):
+//   ADMIN_EMAILS  — comma-separated exact emails (optional)
+//   ADMIN_DOMAINS — comma-separated domains e.g. gnrmedia.global (optional)
 //
-// IMPORTANT:
-// - This scaffold intentionally contains ONLY imports + exports.
-// - Add real implementations incrementally as you migrate endpoints.
-// ---------------------------------------------------
+// Cloudflare Access injects identity headers when the request
+// passes through. We trust Access to block unauthenticated
+// requests and do an extra allowlist check here (defense-in-depth).
+// ============================================================
 
-// (Optional) If you later split shared code into functions/_lib, import from there.
-// Example:
-// import { someHelper } from "../../_lib/someHelper.js";
-
-// ---------- Auth / CORS ----------
-// Expectation: implement these so route files can do:
-//   const admin = requireAdmin({ request, env });
-//   if (admin instanceof Response) return admin;
-export function requireAdmin(_ctx) {
-  // TODO: implement (Cloudflare Access header + allowlist)
+function parseCsv(s) {
+    return String(s || "")
+      .split(",")
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean);
 }
 
-// Expectation: return CORS headers object OR null
-export function corsHeaders(_ctx) {
-  // TODO: implement
+function getAccessEmail(req) {
+    const h =
+          req.headers.get("cf-access-authenticated-user-email") ||
+          req.headers.get("Cf-Access-Authenticated-User-Email") ||
+          "";
+    return String(h || "").trim().toLowerCase();
 }
 
-// Expectation: helper returning JSON Response with CORS + content-type
-export function jsonResponse(_ctx, obj, status = 200) {
-  // TODO: implement
+function isAllowedAdmin(email, env) {
+    if (!email) return false;
+
+  const adminEmails = parseCsv(env.ADMIN_EMAILS);
+    const adminDomains = parseCsv(env.ADMIN_DOMAINS);
+
+  if (adminEmails.length && adminEmails.includes(email)) return true;
+
+  if (adminDomains.length) {
+        const at = email.lastIndexOf("@");
+        const domain = at >= 0 ? email.slice(at + 1) : "";
+        if (domain && adminDomains.includes(domain)) return true;
+  }
+
+  // If neither ADMIN_EMAILS nor ADMIN_DOMAINS is set, default DENY.
+  return false;
 }
+
+/**
+ * Require admin authentication via Cloudflare Access.
+ *
+ * Returns { email } on success, or a Response (401/403) on failure.
+ * Route files should do:
+ *   const admin = requireAdmin(context);
+ *   if (admin instanceof Response) return admin;
+ *
+ * @param {Object} context - Pages Function context ({ request, env })
+ * @returns {{ email: string } | Response}
+ */
+export function requireAdmin(context) {
+    const { request, env } = context;
+    const email = getAccessEmail(request);
+
+  if (!email) {
+        return jsonResponse(
+                context,
+          {
+                    error: "Unauthorized",
+                    detail:
+                                "Missing Cloudflare Access identity header. Ensure this route is protected by Cloudflare Access.",
+          },
+                401
+              );
+  }
+
+  if (!isAllowedAdmin(email, env)) {
+        return jsonResponse(context, { error: "Forbidden", email }, 403);
+  }
+
+  return { email };
+}
+
+// ============================================================
+// Remaining handler stubs (Phase 2+)
+// All TODO — implementations will be migrated incrementally
+// from zlegacy-workers/blog-ai.worker.js
+// ============================================================
 
 // ---------- Core admin actions ----------
-// Used by: functions/api/blog/run-now.js
-// Expectation: run for a single location_id (manual trigger)
 export async function runNowForLocation(_ctx, locationid) {
-  // TODO: implement
+    // TODO: implement
 }
 
 // ---------- Draft spine ----------
-// Used by: functions/api/blog/draft/create.js
 export async function createDraftForLocation(_ctx, locationid) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/draft/generate-ai.js (canonical example below)
 export async function generateAiForDraft(_ctx, draftid, options = {}) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/drafts/list.js etc.
 export async function listDraftsForLocation(ctx, locationid, limit = 20) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/draft/get/[draftid].js
 export async function getDraftById(_ctx, draftid) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/draft/render/[draft_id].js
 export async function renderDraftHtml(_ctx, draftid) {
-  // TODO: implement
+    // TODO: implement
 }
 
 // ---------- Draft asset management ----------
-// Used by: functions/api/blog/draft/asset/upsert.js
 export async function upsertDraftAsset(_ctx, draftid, key, assetData) {
-  // TODO: implement
+    // TODO: implement
 }
 
 // ---------- Review flow ----------
-// Used by: functions/api/blog/review/create.js
 export async function createReviewLink(_ctx, draftid, clientemail = null) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/review/accept.js
 export async function acceptReview(_ctx, token, follow = {}) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/review/save.js
 export async function saveReviewEdits(_ctx, token, content_markdown, follow = {}) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/review/request-changes.js
 export async function submitReviewFinal(ctx, token, content_markdown) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/review/suggestions/save.js
 export async function saveReviewSuggestions(_ctx, token, payload = {}) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/review/visuals/save.js
 export async function saveReviewVisualUrl(_ctx, token, visual_key, imageurl) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/review/debug.js
 export async function getReviewDebug(ctx, token) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/review/visuals/debug.js
 export async function getReviewVisualsDebug(ctx, token) {
-  // TODO: implement
+    // TODO: implement
 }
 
 // ---------- Program management ----------
-// Used by: functions/api/blog/program/add.js
 export async function addProgram(ctx, payload = {}) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/program/remove.js
 export async function removeProgram(ctx, programid) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/program/mode.js
 export async function setProgramMode(ctx, programid, mode) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/program/mode-bulk.js
 export async function setProgramModeBulk(ctx, updates = {}) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/program/list.js
 export async function listPrograms(ctx) {
-  // TODO: implement
+    // TODO: implement
 }
 
 // ---------- Businesses ----------
-// Used by: functions/api/blog/businesses/list.js
 export async function listBusinesses(ctx) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/business/update-urls.js
 export async function updateBusinessUrls(ctx, businessid, urls = {}) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/business/backfill-websites.js
 export async function backfillBusinessWebsites(ctx, businessid) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: functions/api/blog/business/backfill-websites-master.js
 export async function backfillBusinessWebsitesMaster(ctx, limit = 50) {
-  // TODO: implement
+    // TODO: implement
 }
 
 // ---------- Editorial / auto cadence ----------
-// Used by: functions/api/blog/auto/run.js
 export async function runAutoCadence(_ctx, limit = 25) {
-  // TODO: implement
+    // TODO: implement
 }
 
-// Used by: editorial brain endpoints
 export async function getEditorialBrain(ctx, locationid, limit = 10) {
-  // TODO: implement
+    // TODO: implement
 }
 
 export async function backfillEditorialBrain(ctx, locationid, limit = 10) {
-  // TODO: implement
+    // TODO: implement
 }
 
 // ---------- WOW ----------
 export async function evaluateWow(ctx, draftid, minscore = 96) {
-  // TODO: implement
+    // TODO: implement
 }
 
 // ---------- WordPress ----------
 export async function wordpressConnect(_ctx, payload) {
-  // TODO: implement
+    // TODO: implement
 }
 
 export async function wordpressTest(ctx, locationid) {
-  // TODO: implement
+    // TODO: implement
 }
-//```
-
-//---
-
-//## COMPLETE INSTRUCTIONS FOR VS CODE
-
-//### Step 1: Open VS Code
-
-//1. Open **GitHub Desktop**
-//2. Right-click on **gnr-blog-ai** in the left sidebar
-//3. Click **"Open in Visual Studio Code"**
-//4. VS Code will open with your folder structure on the left
-
-//### Step 2: Create Each File
-
-//For EACH file above:
-
-//1. **Right-click** the folder in the left sidebar (e.g., `functions/api/blog/draft/`)
-//2. Click **"New File"**
-//3. Type the filename (e.g., `generate-ai.js`)
-//4. Press **Enter**
-//5. **Copy** the code I provided
-//6. **Paste it** into the file (Ctrl+V)
-//7. **Save** it (Ctrl+S)
-
-//**Total files to create: 31**
-
-//---
-
-//### Step 3: Commit and Push Everything
-
-//Once ALL 31 files are created:
-
-//1. Click the **Source Control icon** in the left sidebar (looks like a circle with lines)
-//2. You'll see all files listed as "Untracked Changes"
-//3. Click the **+ button** next to "Changes" to stage all
-//4. In the "Message" box at the top, type:
-//```
-  // feat: migrate worker to Pages Functions routes (31 new files)
