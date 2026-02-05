@@ -22,16 +22,22 @@ export function withCors(request, response) {
 }
 
 export function handleOptions(request) {
-    const origin = request.headers.get("Origin");
+  const origin = request.headers.get("Origin");
 
   const headers = new Headers();
-    headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Content-Type");
-    headers.set("Access-Control-Allow-Credentials", "true");
+
+  // IMPORTANT: include whatever the browser requests, or just allow the common set
+  headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With"
+  );
+  headers.set("Access-Control-Allow-Credentials", "true");
+  headers.set("Access-Control-Max-Age", "86400");
 
   if (origin === "https://admin.gnrmedia.global") {
-        headers.set("Access-Control-Allow-Origin", origin);
-        headers.set("Vary", "Origin");
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Vary", "Origin");
   }
 
   return new Response(null, { status: 204, headers });
