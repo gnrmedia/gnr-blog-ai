@@ -1,17 +1,9 @@
 // functions/api/blog/draft/generate-ai.js
 import { requireAdmin, generateAiForDraft } from "../../blog-handlers.js";
 
-
-export async function onRequest(context) {
+// POST handler (Pages Functions expects method-specific exports)
+export async function onRequestPost(context) {
   const { request } = context;
-
-  // Only POST
-  if (request.method !== "POST") {
-    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
-      status: 405,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
-  }
 
   // Admin guard (Cloudflare Access)
   const admin = requireAdmin(context);
@@ -46,6 +38,14 @@ export async function onRequest(context) {
 
   return new Response(JSON.stringify({ ok: true, ...result }, null, 2), {
     status: 200,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+// Optional: explicit GET handler (helps debugging in-browser)
+export async function onRequestGet() {
+  return new Response(JSON.stringify({ ok: false, error: "Use POST" }), {
+    status: 405,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
