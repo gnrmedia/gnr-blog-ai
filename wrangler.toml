@@ -2,37 +2,8 @@ name = "gnr-blog-ai"
 main = "worker.js"
 compatibility_date = "2026-02-05"
 
-secrets_store_id = "de312b0fed04cdfb8d83983dc43b2eb"
 
 [[d1_databases]]
 binding = "GNR_MEDIA_BUSINESS_DB"
 database_name = "gnr_businesses"
 database_id = "6524a841-c082-41b0-871d-c3136435ba9e"
-
-[[secrets_store]]
-binding = "PROVISION_SHARED_SECRET"
-secret_name = "PROVISION_SHARED_SECRET"
-
-[[secrets_store]]
-binding = "OPENAI_API_KEY"
-secret_name = "OPENAI_API_KEY"
-
-[[secrets_store]]
-binding = "SENDGRID_API_KEY_GNRMEDIA"
-secret_name = "SENDGRID_API_KEY_GNRMEDIA"
-
-[[secrets_store]]
-binding = "GHL_AGENCY_API_KEY"
-secret_name = "GHL_AGENCY_API_KEY"
-
-[[secrets_store]]
-binding = "GHL_GNR_API_KEY"
-secret_name = "GHL_GNR_API_KEY"
-
-[[secrets_store]]
-binding = "GHL_GNR_LOCATION_ID"
-secret_name = "GHL_GNR_LOCATION_ID"
-
-[[secrets_store]]
-binding = "PUBLISHER_ENC_KEY_B64"
-secret_name = "PUBLISHER_ENC_KEY_B64"
