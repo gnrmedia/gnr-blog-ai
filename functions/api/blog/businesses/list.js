@@ -22,20 +22,26 @@ export async function businessesList(request, env) {
   // 4) Query
 let sql = `
   SELECT
-      b.location_id,
-          b.business_name_raw,
-              b.abn,
-                  b.is_active,
-                      -- Blog program state (history)
-                          COALESCE(p.enabled, 0)     AS program_enabled,
-            COALESCE(p.run_mode, 'manual') AS program_run_mode,
-                        COALESCE(p.run_mode, 'manual') AS run_mode,p.added_at                 AS program_added_at,
-                                      p.added_by                 AS program_added_by,
-                                          p.notes                    AS program_notes
-                                            FROM businesses b
-                                              LEFT JOIN blog_program_locations p
-                                                  ON p.location_id = b.location_id
-                                                  `;
+    b.location_id,
+    b.business_name_raw,
+    b.abn,
+    b.is_active,
+
+    -- Blog program state (Admin UI contract)
+    COALESCE(p.enabled, 0) AS program_enabled,
+
+    -- Always return canonical lowercase values: 'auto' | 'manual'
+    LOWER(COALESCE(p.run_mode, 'manual')) AS program_run_mode,
+
+    p.added_at AS program_added_at,
+    p.added_by AS program_added_by,
+    p.notes    AS program_notes
+
+  FROM businesses b
+  LEFT JOIN blog_program_locations p
+    ON p.location_id = b.location_id
+`;
+
   if (!includeInactive) sql += ` WHERE b.is_active = 1`;
   sql += ` ORDER BY b.business_name_raw LIMIT ?`;
 
