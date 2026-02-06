@@ -1,4 +1,7 @@
-import { requireAdmin, removeProgram } from "./functions/api/blog-handlers.js";
+// Repo: gnr-blog-ai
+// File path: /worker.js
+
+import { requireAdmin, removeProgram, addProgram } from "./functions/api/blog-handlers.js";
 import { handleOptions, withCors } from "./functions/api/cors.js";
 import { businessesList } from "./functions/api/blog/businesses/list.js";
 
@@ -20,6 +23,12 @@ export default {
       if (admin instanceof Response) return withCors(request, admin);
 
       const res = await businessesList(request, env);
+      return withCors(request, res);
+    }
+
+    // POST /api/blog/program/add   (Enable button)
+    if (pathname === "/api/blog/program/add" && request.method === "POST") {
+      const res = await addProgram({ request, env });
       return withCors(request, res);
     }
 
