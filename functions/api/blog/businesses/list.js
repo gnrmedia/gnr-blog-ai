@@ -1,8 +1,9 @@
 // NOTE: This endpoint MUST mirror blog-handlers.js:listBusinesses()
 // program_enabled + program_run_mode are part of the Admin UI contract.
 // Do not rename without updating the Admin UI.
-himport { requireAdmin } from "../../blog-handlers.js";
+import { requireAdmin } from "../../blog-handlers.js";
 import { withCors, handleOptions } from "../../cors.js";
+
 
 export async function businessesList(request, env) {
   // 1) CORS preflight
