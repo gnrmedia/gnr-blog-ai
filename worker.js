@@ -25,7 +25,7 @@ export default {
 
     // POST /api/blog/program/remove   (Disable button)
     if (pathname === "/api/blog/program/remove" && request.method === "POST") {
-      const res = await removeProgram({ request, env, ctx });
+      const res = await removeProgram({ request, env });
       return withCors(request, res);
     }
 
