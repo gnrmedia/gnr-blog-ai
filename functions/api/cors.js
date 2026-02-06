@@ -11,8 +11,11 @@ export function withCors(request, response) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Credentials", "true");
     headers.set(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-admin-key"
+ headers.set(
+  "Access-Control-Allow-Headers",
+  "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-provision-shared-secret"
+);
+
     );
     headers.set("Vary", "Origin");
   }
@@ -31,8 +34,11 @@ export function handleOptions(request) {
 
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   headers.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-admin-key"
+headers.set(
+  "Access-Control-Allow-Headers",
+  "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-provision-shared-secret"
+);
+
   );
   headers.set("Access-Control-Allow-Credentials", "true");
   headers.set("Access-Control-Max-Age", "86400");
