@@ -131,7 +131,7 @@ function isAllowedAdmin(email, env) {
 export function requireAdmin(context) {
   const { request, env } = context;
 
-  // Preferred: Access header (works if API is ever put back behind Access)
+  // 1) Preferred: Cloudflare Access identity header (works if API is behind Access)
   const email = getAccessEmail(request);
   if (email) {
     if (!isAllowedAdmin(email, env)) {
@@ -139,6 +139,30 @@ export function requireAdmin(context) {
     }
     return { email, auth: "cf-access-header" };
   }
+
+  // 2) Fallback: shared secret header (works when API is NOT behind Access)
+  const key =
+    (request.headers.get("x-admin-key") ||
+      request.headers.get("X-ADMIN-KEY") ||
+      "").trim();
+
+  const expected = String(env.PROVISION_SHARED_SECRET || "").trim();
+
+  if (expected && key && key === expected) {
+    return { email: "api-key", auth: "shared-secret" };
+  }
+
+  return jsonResponse(
+    context,
+    {
+      error: "Unauthorized",
+      detail:
+        "Missing admin identity (no Access email header and no valid X-ADMIN-KEY).",
+    },
+    401
+  );
+}
+
 
   // Fallback: Cloudflare Access session cookie (works when only UI is behind Access)
   // This is what your browser sends cross-subdomain when the cookie scope is .gnrmedia.global
