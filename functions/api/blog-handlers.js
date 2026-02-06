@@ -160,34 +160,6 @@ return jsonResponse(
 }
 
 
-
-  // Fallback: Cloudflare Access session cookie (works when only UI is behind Access)
-  // This is what your browser sends cross-subdomain when the cookie scope is .gnrmedia.global
-  const cookie = String(request.headers.get("Cookie") || "");
-  const hasAccessSession =
-    cookie.includes("CF_Authorization=") ||
-    cookie.includes("CF_AppSession=") ||
-    cookie.includes("CF_Authorization") ||
-    cookie.includes("CF_AppSession");
-
-  if (!hasAccessSession) {
-    return jsonResponse(
-      context,
-      {
-        error: "Unauthorized",
-        detail:
-          "Missing admin identity (no CF Access email header, and no CF Access session cookie).",
-      },
-      401
-    );
-  }
-
-  // We can't extract email from the cookie here without verifying the token.
-  // Treat as an authenticated admin session and continue.
-  return { email: "session", auth: "cf-access-cookie" };
-}
-
-
 // ============================================================
 // HTML → TEXT (for fetched context)
 // ============================================================
