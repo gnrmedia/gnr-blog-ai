@@ -1,58 +1,46 @@
-// NOTE: This endpoint MUST mirror blog-handlers.js:listBusinesses()
-// program_enabled + program_run_mode are part of the Admin UI contract.
-// Do not rename without updating the Admin UI.
-import { requireAdmin } from "../../blog-handlers.js";
-import { withCors, handleOptions } from "../../cors.js";
+// functions/api/blog/businesses/list.js
+import { requireAdmin, listBusinesses } from "../../../blog-handlers.js";
 
+export async function onRequest(context) {
+  const { request } = context;
 
-export async function businessesList(request, env) {
-  // 1) CORS preflight
-  if (request.method === "OPTIONS") return handleOptions(request);
+  // Allow CORS preflight (Pages Functions still receives OPTIONS)
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": request.headers.get("Origin") || "*",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-provision-shared-secret",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
 
-  // 2) Admin guard (returns Response on failure)
-  const admin = requireAdmin({ env, request });
-  if (admin instanceof Response) return withCors(request, admin);
+  if (request.method !== "GET") {
+    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "Access-Control-Allow-Origin": request.headers.get("Origin") || "*",
+        "Access-Control-Allow-Credentials": "true",
+      },
+    });
+  }
 
-  // 3) Params
-  const url = new URL(request.url);
-  const limitRaw = Number(url.searchParams.get("limit")) || 200;
-  const limit = Math.min(Math.max(limitRaw, 1), 500);
-  const includeInactive = url.searchParams.get("include_inactive") === "1";
+  // Admin guard (Cloudflare Access or shared secret fallback, depending on your implementation)
+  const admin = requireAdmin(context);
+  if (admin instanceof Response) return admin;
 
-  // 4) Query
-let sql = `
-  SELECT
-    b.location_id,
-    b.business_name_raw,
-    b.abn,
-    b.is_active,
-
-    -- Blog program state (Admin UI contract)
-    COALESCE(p.enabled, 0) AS program_enabled,
-
-    -- Always return canonical lowercase values: 'auto' | 'manual'
-    LOWER(COALESCE(p.run_mode, 'manual')) AS program_run_mode,
-
-    p.added_at AS program_added_at,
-    p.added_by AS program_added_by,
-    p.notes    AS program_notes
-
-  FROM businesses b
-  LEFT JOIN blog_program_locations p
-    ON p.location_id = b.location_id
-`;
-
-  if (!includeInactive) sql += ` WHERE b.is_active = 1`;
-  sql += ` ORDER BY b.business_name_raw LIMIT ?`;
-
-  const res = await env.GNR_MEDIA_BUSINESS_DB.prepare(sql).bind(limit).all();
-  const rows = res?.results || [];
-
-  // 5) Response
-  return withCors(
-    request,
-    new Response(JSON.stringify({ ok: true, rows }), {
-      headers: { "content-type": "application/json; charset=utf-8" },
-    })
-  );
+  // Delegate to canonical handler in blog-handlers.js.
+  // listBusinesses(ctx) is expected to return a jsonResponse(...) Response.
+  //
+  // It should read query params from context.request.url:
+  //  - q
+  //  - limit
+  //  - include_inactive
+  //
+  return await listBusinesses(context);
 }
+
