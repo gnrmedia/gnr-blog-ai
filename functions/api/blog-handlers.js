@@ -1217,8 +1217,35 @@ export async function runNowForLocation(_ctx, locationid) {
 }
 
 export async function listDraftsForLocation(ctx, locationid, limit = 20) {
-      // TODO: implement
+  const { env } = ctx;
+
+  const loc = normaliseLocationId(locationid);
+  const lim = Math.min(Math.max(parseInt(String(limit || "20"), 10) || 20, 1), 200);
+
+  if (!loc) return errorResponse(ctx, "location_id required", 400);
+
+  // Draft history (latest first). Include status so UI can label rows.
+  const rs = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT
+      draft_id,
+      location_id,
+      status,
+      title,
+      created_at,
+      updated_at,
+      approved_at
+    FROM blog_drafts
+    WHERE location_id LIKE ? AND length(location_id) = ?
+    ORDER BY
+      datetime(approved_at) DESC,
+      datetime(updated_at) DESC,
+      datetime(created_at) DESC
+    LIMIT ?
+  `).bind(loc, loc.length, lim).all();
+
+  return jsonResponse(ctx, { ok: true, location_id: loc, limit: lim, drafts: rs?.results || [] });
 }
+
 
 // ---------- Draft asset management ----------
 export async function upsertDraftAsset(_ctx, draftid, key, assetData) {
