@@ -24,7 +24,6 @@ export function withCors(request, response) {
   });
 }
 
-
 export function handleOptions(request) {
   const origin = request.headers.get("Origin");
 
