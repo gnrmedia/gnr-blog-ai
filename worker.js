@@ -1,6 +1,6 @@
 import { requireAdmin } from "./functions/api/blog-handlers.js";
 import { handleOptions, withCors } from "./functions/api/cors.js";
-import { listBusinesses } from "./functions/api/blog/businesses/list.js";
+import { businessesList } from "./functions/api/blog/businesses/list.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -16,7 +16,7 @@ export default {
     // Route: businesses list
     if (url.pathname === "/api/blog/businesses/list") {
       requireAdmin({ request, env, ctx });
-      const res = await listBusinesses({ request, env, ctx });
+      const res = await businessesList(request, env);
       return withCors(request, res);
     }
 
