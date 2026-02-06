@@ -1255,8 +1255,30 @@ export async function getReviewVisualsDebug(ctx, token) {
 export async function addProgram(ctx, payload = {}) {
       // TODO: implement
 }
-export async function removeProgram(ctx) {
-  const { env, request } = ctx;
+// Try with removed_at first; fall back if column doesn't exist.
+try {
+  await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    UPDATE blog_program_locations
+       SET enabled = 0,
+           notes = ?,
+           removed_at = datetime('now')
+     WHERE location_id = ?
+  `).bind(notes, location_id).run();
+} catch (e) {
+  console.log("PROGRAM_REMOVE_UPDATE_FALLBACK", {
+    location_id,
+    error: String(e?.message || e),
+  });
+
+  // Fallback: schema-safe update (no removed_at)
+  await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    UPDATE blog_program_locations
+       SET enabled = 0,
+           notes = ?
+     WHERE location_id = ?
+  `).bind(notes, location_id).run();
+}
+;
 
   // Admin auth (returns Response on failure)
   const admin = requireAdmin({ env, request });
