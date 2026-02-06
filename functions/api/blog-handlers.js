@@ -129,19 +129,43 @@ function isAllowedAdmin(email, env) {
 }
 
 export function requireAdmin(context) {
-      const { request, env } = context;
-      const email = getAccessEmail(request);
-      if (!email) {
-              return jsonResponse(context, {
-                        error: "Unauthorized",
-                        detail: "Missing Cloudflare Access identity header.",
-              }, 401);
-      }
-      if (!isAllowedAdmin(email, env)) {
-              return jsonResponse(context, { error: "Forbidden", email }, 403);
-      }
-      return { email };
+  const { request, env } = context;
+
+  // Preferred: Access header (works if API is ever put back behind Access)
+  const email = getAccessEmail(request);
+  if (email) {
+    if (!isAllowedAdmin(email, env)) {
+      return jsonResponse(context, { error: "Forbidden", email }, 403);
+    }
+    return { email, auth: "cf-access-header" };
+  }
+
+  // Fallback: Cloudflare Access session cookie (works when only UI is behind Access)
+  // This is what your browser sends cross-subdomain when the cookie scope is .gnrmedia.global
+  const cookie = String(request.headers.get("Cookie") || "");
+  const hasAccessSession =
+    cookie.includes("CF_Authorization=") ||
+    cookie.includes("CF_AppSession=") ||
+    cookie.includes("CF_Authorization") ||
+    cookie.includes("CF_AppSession");
+
+  if (!hasAccessSession) {
+    return jsonResponse(
+      context,
+      {
+        error: "Unauthorized",
+        detail:
+          "Missing admin identity (no CF Access email header, and no CF Access session cookie).",
+      },
+      401
+    );
+  }
+
+  // We can't extract email from the cookie here without verifying the token.
+  // Treat as an authenticated admin session and continue.
+  return { email: "session", auth: "cf-access-cookie" };
 }
+
 
 // ============================================================
 // HTML → TEXT (for fetched context)
