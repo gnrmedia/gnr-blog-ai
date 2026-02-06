@@ -35,7 +35,7 @@ export default {
       return withCors(request, res);
     }
 
-        // ------------------------------------------------------------
+    // ------------------------------------------------------------
     // GET /api/blog/drafts/list  (Draft history per location)
     // ------------------------------------------------------------
     if (request.method === "GET" && pathname === "/api/blog/drafts/list") {
@@ -46,9 +46,18 @@ export default {
         "./functions/api/blog-handlers.js"
       );
 
-      const res = await listDraftsForLocation(context);
+      const url = new URL(request.url);
+      const location_id = url.searchParams.get("location_id");
+      const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+
+      const res = await listDraftsForLocation(context, {
+        location_id,
+        limit,
+      });
+
       return withCors(request, res);
     }
+}
 
     // ------------------------------------------------------------
     // POST /api/blog/program/add
