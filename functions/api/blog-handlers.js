@@ -131,7 +131,27 @@ function isAllowedAdmin(email, env) {
 export function requireAdmin(context) {
   const { request, env } = context;
 
-  // 1) Preferred: Cloudflare Access identity header (works if API is behind Access)
+  // 1) Fallback: shared secret header (works even when API IS behind Access)
+  const key = String(
+    request.headers.get("x-provision-shared-secret") ||
+    request.headers.get("X-Provision-Shared-Secret") ||
+    ""
+  ).trim();
+
+  const expected = String(env.PROVISION_SHARED_SECRET || "").trim();
+  if (!expected) {
+    return jsonResponse(
+      context,
+      { error: "Server misconfigured", detail: "env.PROVISION_SHARED_SECRET is missing" },
+      500
+    );
+  }
+
+  if (key && key === expected) {
+    return { email: "api-key", auth: "shared-secret" };
+  }
+
+  // 2) Preferred: Cloudflare Access identity header (works if API is behind Access)
   const email = getAccessEmail(request);
   if (email) {
     if (!isAllowedAdmin(email, env)) {
@@ -140,24 +160,17 @@ export function requireAdmin(context) {
     return { email, auth: "cf-access-header" };
   }
 
-// 2) Fallback: shared secret header (works when API is NOT behind Access)
-const key = String(request.headers.get("x-provision-shared-secret") || "").trim();
-const expected = String(env.PROVISION_SHARED_SECRET || "").trim();
-
-if (expected && key && key === expected) {
-  return { email: "api-key", auth: "shared-secret" };
+  return jsonResponse(
+    context,
+    {
+      error: "Unauthorized",
+      detail:
+        "Missing admin identity (no Access email header and no valid x-provision-shared-secret).",
+    },
+    401
+  );
 }
 
-return jsonResponse(
-  context,
-  {
-    error: "Unauthorized",
-    detail:
-      "Missing admin identity (no Access email header and no valid x-provision-shared-secret).",
-  },
-  401
-);
-}
 
 
 // ============================================================
