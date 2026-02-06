@@ -140,28 +140,25 @@ export function requireAdmin(context) {
     return { email, auth: "cf-access-header" };
   }
 
-  // 2) Fallback: shared secret header (works when API is NOT behind Access)
-  const key =
-    (request.headers.get("x-admin-key") ||
-      request.headers.get("X-ADMIN-KEY") ||
-      "").trim();
+// 2) Fallback: shared secret header (works when API is NOT behind Access)
+const key = String(request.headers.get("x-provision-shared-secret") || "").trim();
+const expected = String(env.PROVISION_SHARED_SECRET || "").trim();
 
-  const expected = String(env.PROVISION_SHARED_SECRET || "").trim();
-
-  if (expected && key && key === expected) {
-    return { email: "api-key", auth: "shared-secret" };
-  }
-
-  return jsonResponse(
-    context,
-    {
-      error: "Unauthorized",
-      detail:
-        "Missing admin identity (no Access email header and no valid X-ADMIN-KEY).",
-    },
-    401
-  );
+if (expected && key && key === expected) {
+  return { email: "api-key", auth: "shared-secret" };
 }
+
+return jsonResponse(
+  context,
+  {
+    error: "Unauthorized",
+    detail:
+      "Missing admin identity (no Access email header and no valid x-provision-shared-secret).",
+  },
+  401
+);
+}
+
 
 
   // Fallback: Cloudflare Access session cookie (works when only UI is behind Access)
