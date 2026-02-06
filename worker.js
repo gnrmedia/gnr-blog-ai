@@ -50,12 +50,9 @@ export default {
       const location_id = url.searchParams.get("location_id");
       const limit = parseInt(url.searchParams.get("limit") || "20", 10);
 
-      const res = await listDraftsForLocation(context, {
-        location_id,
-        limit,
-      });
-
+      const res = await listDraftsForLocation(context, location_id, limit);
       return withCors(request, res);
+
     }
 
     // ------------------------------------------------------------
