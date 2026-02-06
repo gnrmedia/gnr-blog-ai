@@ -1,9 +1,8 @@
 // Repo: gnr-blog-ai
 // File: worker.js
 
-import { requireAdmin, removeProgram, addProgram } from "./functions/api/blog-handlers.js";
+import { requireAdmin, removeProgram, addProgram } from "./functions/api/blog/_lib/blog-handlers.js";
 import { handleOptions, withCors } from "./functions/api/cors.js";
-import { businessesList } from "./functions/api/blog/businesses/list.js";
 
 import { onRequest as programMode } from "./functions/api/blog/program/mode.js";
 import { onRequest as programModeBulk } from "./functions/api/blog/program/mode-bulk.js";
@@ -25,17 +24,6 @@ export default {
     const context = { request, env, ctx };
 
     // ------------------------------------------------------------
-    // GET /api/blog/businesses/list
-    // ------------------------------------------------------------
-    if (request.method === "GET" && pathname === "/api/blog/businesses/list") {
-      const admin = await requireAdmin(context);
-      if (admin instanceof Response) return withCors(request, admin);
-
-      const res = await businessesList(request, env);
-      return withCors(request, res);
-    }
-
-    // ------------------------------------------------------------
     // GET /api/blog/drafts/list  (Draft history per location)
     // ------------------------------------------------------------
     if (request.method === "GET" && pathname === "/api/blog/drafts/list") {
@@ -43,22 +31,18 @@ export default {
       if (admin instanceof Response) return withCors(request, admin);
 
       const { listDraftsForLocation } = await import(
-        "./functions/api/blog-handlers.js"
+        "./functions/api/blog/_lib/blog-handlers.js"
       );
 
-      const url = new URL(request.url);
+      // Accept both keys (compat shim): location_id is canonical; locationid is legacy
+      const location_id =
+        url.searchParams.get("location_id") ||
+        url.searchParams.get("locationid");
 
-// Accept both keys (compat shim): location_id is canonical; locationid is legacy
-const location_id =
-  url.searchParams.get("location_id") ||
-  url.searchParams.get("locationid");
-
-const limit = parseInt(url.searchParams.get("limit") || "20", 10);
-
+      const limit = parseInt(url.searchParams.get("limit") || "20", 10);
 
       const res = await listDraftsForLocation(context, location_id, limit);
       return withCors(request, res);
-
     }
 
     // ------------------------------------------------------------
@@ -78,7 +62,11 @@ const limit = parseInt(url.searchParams.get("limit") || "20", 10);
     // ------------------------------------------------------------
     // POST /api/blog/program/mode (SINGLE)
     // ------------------------------------------------------------
-    if (request.method === "POST" && pathname.startsWith("/api/blog/program/mode") && !pathname.endsWith("/bulk")) {
+    if (
+      request.method === "POST" &&
+      pathname.startsWith("/api/blog/program/mode") &&
+      !pathname.endsWith("/bulk")
+    ) {
       console.log("[ROUTE] program/mode");
       return withCors(request, await programMode(context));
     }
