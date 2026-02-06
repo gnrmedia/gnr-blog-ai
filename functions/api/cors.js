@@ -1,21 +1,20 @@
+// functions/api/cors.js
+
 export function withCors(request, response) {
   const origin = request.headers.get("Origin");
 
   const allowedOrigins = [
-    "https://admin.gnrmedia.global"
+    "https://admin.gnrmedia.global",
   ];
 
   const headers = new Headers(response.headers);
 
-  if (allowedOrigins.includes(origin)) {
+  if (origin && allowedOrigins.includes(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Credentials", "true");
     headers.set(
- headers.set(
-  "Access-Control-Allow-Headers",
-  "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-provision-shared-secret"
-);
-
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-provision-shared-secret"
     );
     headers.set("Vary", "Origin");
   }
@@ -23,7 +22,7 @@ export function withCors(request, response) {
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers
+    headers,
   });
 }
 
@@ -34,11 +33,8 @@ export function handleOptions(request) {
 
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   headers.set(
-headers.set(
-  "Access-Control-Allow-Headers",
-  "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-provision-shared-secret"
-);
-
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-provision-shared-secret"
   );
   headers.set("Access-Control-Allow-Credentials", "true");
   headers.set("Access-Control-Max-Age", "86400");
@@ -50,4 +46,5 @@ headers.set(
 
   return new Response(null, { status: 204, headers });
 }
+
 
