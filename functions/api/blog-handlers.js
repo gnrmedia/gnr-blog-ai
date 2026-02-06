@@ -1255,8 +1255,39 @@ export async function getReviewVisualsDebug(ctx, token) {
 export async function addProgram(ctx, payload = {}) {
       // TODO: implement
 }
-export async function removeProgram(ctx, programid) {
-      // TODO: implement
+export async function removeProgram(ctx) {
+  const { env, request } = ctx;
+
+  // Admin auth (returns Response on failure)
+  const admin = requireAdmin({ env, request });
+  if (admin instanceof Response) return admin;
+
+  // Parse JSON body
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return errorResponse(ctx, "Invalid JSON body", 400);
+  }
+
+  const location_id = String(body?.location_id || "").trim();
+  const notes = String(body?.notes || "disabled via Blog AI Admin list").trim();
+
+  if (!location_id) {
+    return errorResponse(ctx, "location_id required", 400);
+  }
+
+  await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    UPDATE blog_program_locations
+       SET enabled = 0,
+           notes = ?,
+           removed_at = datetime('now')
+     WHERE location_id = ?
+  `).bind(notes, location_id).run();
+
+  return jsonResponse(ctx, { ok: true, action: "removed", location_id });
+}
+
 }
 export async function setProgramMode(ctx, programid, mode) {
       // TODO: implement
