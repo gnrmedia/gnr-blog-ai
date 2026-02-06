@@ -6,7 +6,7 @@ export async function onRequestOptions(context) {
   return handleOptions(context.request);
 }
 
-// POST handler (THIS was missing)
+// POST handler — THIS is what Pages routes
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -16,7 +16,7 @@ export async function onRequestPost(context) {
     return withCors(request, admin);
   }
 
-  // Parse body
+  // Parse JSON body
   let body;
   try {
     body = await request.json();
@@ -47,8 +47,10 @@ export async function onRequestPost(context) {
 
   return withCors(
     request,
-    jsonResponse(context, { ok: true, action: "removed", location_id })
+    jsonResponse(context, {
+      ok: true,
+      action: "removed",
+      location_id
+    })
   );
 }
-
-
