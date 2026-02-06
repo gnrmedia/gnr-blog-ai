@@ -1288,7 +1288,6 @@ export async function removeProgram(ctx) {
   return jsonResponse(ctx, { ok: true, action: "removed", location_id });
 }
 
-}
 export async function setProgramMode(ctx, programid, mode) {
       // TODO: implement
 }
