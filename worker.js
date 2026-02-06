@@ -35,6 +35,21 @@ export default {
       return withCors(request, res);
     }
 
+        // ------------------------------------------------------------
+    // GET /api/blog/drafts/list  (Draft history per location)
+    // ------------------------------------------------------------
+    if (request.method === "GET" && pathname === "/api/blog/drafts/list") {
+      const admin = await requireAdmin(context);
+      if (admin instanceof Response) return withCors(request, admin);
+
+      const { listDraftsForLocation } = await import(
+        "./functions/api/blog-handlers.js"
+      );
+
+      const res = await listDraftsForLocation(context);
+      return withCors(request, res);
+    }
+
     // ------------------------------------------------------------
     // POST /api/blog/program/add
     // ------------------------------------------------------------
