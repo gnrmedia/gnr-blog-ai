@@ -47,8 +47,14 @@ export default {
       );
 
       const url = new URL(request.url);
-      const location_id = url.searchParams.get("location_id");
-      const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+
+// Accept both keys (compat shim): location_id is canonical; locationid is legacy
+const location_id =
+  url.searchParams.get("location_id") ||
+  url.searchParams.get("locationid");
+
+const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+
 
       const res = await listDraftsForLocation(context, location_id, limit);
       return withCors(request, res);
