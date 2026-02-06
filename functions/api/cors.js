@@ -29,9 +29,11 @@ export function handleOptions(request) {
 
   const headers = new Headers();
 
-  // IMPORTANT: include whatever the browser requests, or just allow the common set
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  "Access-Control-Allow-Headers",
+  headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-admin-key"
+  );
   headers.set("Access-Control-Allow-Credentials", "true");
   headers.set("Access-Control-Max-Age", "86400");
 
@@ -42,3 +44,4 @@ export function handleOptions(request) {
 
   return new Response(null, { status: 204, headers });
 }
+
