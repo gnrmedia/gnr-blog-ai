@@ -1306,11 +1306,6 @@ export async function removeProgram(ctx) {
 }
 
 export async function setProgramMode(ctx, programid, mode) {
-  // TODO: implement
-}
-
-
-export async function setProgramMode(ctx, programid, mode) {
       // TODO: implement
 }
 export async function setProgramModeBulk(ctx, updates = {}) {
