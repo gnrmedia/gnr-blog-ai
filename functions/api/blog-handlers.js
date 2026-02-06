@@ -1249,8 +1249,51 @@ export async function listDraftsForLocation(ctx, locationid, limit = 20) {
 
 // ---------- Draft asset management ----------
 export async function upsertDraftAsset(_ctx, draftid, key, assetData) {
-      // TODO: implement
-}
+        const { env } = ctx;
+
+        const draft_id = String(draftid || "").trim();
+        if (!draft_id) return errorResponse(ctx, "draft_id required", 400);
+
+        const rawKey = String(key || "").trim();
+        if (!rawKey) return errorResponse(ctx, "key required", 400);
+
+        // Accept "hero" or "infographic-summary" etc, normalize to D1 visual_key format
+        const visual_key = kindToAssetKey(rawKey); // uses underscores, lowercase
+
+        if (!VISUAL_KINDS.includes(visual_key)) {
+                  return errorResponse(ctx, "invalid key", 400, { allowed: VISUAL_KINDS, received: rawKey, normalized: visual_key });
+        }
+
+        const image_url = String(assetData?.image_url || assetData?.url || "").trim();
+        if (!image_url) return errorResponse(ctx, "asset_data.image_url required", 400);
+
+        // Validate draft exists
+        const exists = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+            SELECT draft_id FROM blog_drafts WHERE draft_id = ? LIMIT 1
+              `).bind(draft_id).first();
+
+        if (!exists?.draft_id) return errorResponse(ctx, "Draft not found", 404, { draft_id });
+
+        const provider = String(assetData?.provider || "admin").trim();
+        const asset_type = String(assetData?.asset_type || "image").trim();
+        const prompt = assetData?.prompt ? String(assetData.prompt).trim() : null;
+        const status = String(assetData?.status || "ready").trim();
+
+        const out = await upsertDraftAssetRow(env, {
+                  draft_id,
+                  visual_key,
+                  image_url,
+                  provider,
+                  asset_type,
+                  prompt,
+                  status,
+        });
+
+        if (!out?.ok) return errorResponse(ctx, out?.error || "upsert_failed", 400, out);
+
+        return { ok: true, ...out, draft_id, visual_key };
+      
+
 
 // ---------- Review flow ----------
 export async function createReviewLink(_ctx, draftid, clientemail = null) {
