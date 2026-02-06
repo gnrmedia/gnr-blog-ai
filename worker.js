@@ -57,7 +57,6 @@ export default {
 
       return withCors(request, res);
     }
-}
 
     // ------------------------------------------------------------
     // POST /api/blog/program/add
