@@ -130,7 +130,12 @@ function isAllowedAdmin(email, env) {
 
 export function requireAdmin(context) {
   const { request, env } = context;
-
+  console.log("AUTH_PROBE", {
+    has_shared_header: request.headers.has("x-provision-shared-secret"),
+    shared_len: String(request.headers.get("x-provision-shared-secret") || "").length,
+    env_len: String(env.PROVISION_SHARED_SECRET || "").length,
+  });
+      
   // 1) Fallback: shared secret header (works even when API IS behind Access)
   const key = String(
     request.headers.get("x-provision-shared-secret") ||
