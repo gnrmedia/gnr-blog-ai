@@ -1,5 +1,5 @@
 // functions/api/blog/businesses/list.js
-import { requireAdmin, listBusinesses } from "../../../blog-handlers.js";
+import { requireAdmin, listBusinesses } from "../../../../blog-handlers.js";
 
 export async function onRequest(context) {
   const { request } = context;
