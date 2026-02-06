@@ -1,25 +1,29 @@
 export function withCors(request, response) {
-    const origin = request.headers.get("Origin");
+  const origin = request.headers.get("Origin");
 
-  // Only allow your admin UI
   const allowedOrigins = [
-        "https://admin.gnrmedia.global"
-      ];
+    "https://admin.gnrmedia.global"
+  ];
 
   const headers = new Headers(response.headers);
 
   if (allowedOrigins.includes(origin)) {
-        headers.set("Access-Control-Allow-Origin", origin);
-        headers.set("Access-Control-Allow-Credentials", "true");
-        headers.set("Vary", "Origin");
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Credentials", "true");
+    headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With, x-admin-key"
+    );
+    headers.set("Vary", "Origin");
   }
 
   return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers
+    status: response.status,
+    statusText: response.statusText,
+    headers
   });
 }
+
 
 export function handleOptions(request) {
   const origin = request.headers.get("Origin");
@@ -28,10 +32,7 @@ export function handleOptions(request) {
 
   // IMPORTANT: include whatever the browser requests, or just allow the common set
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  headers.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, CF-Access-Jwt-Assertion, X-Requested-With"
-  );
+  "Access-Control-Allow-Headers",
   headers.set("Access-Control-Allow-Credentials", "true");
   headers.set("Access-Control-Max-Age", "86400");
 
