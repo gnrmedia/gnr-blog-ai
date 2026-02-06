@@ -1,4 +1,7 @@
-import { requireAdmin } from "../../blog-handlers.js";
+// NOTE: This endpoint MUST mirror blog-handlers.js:listBusinesses()
+// program_enabled + program_run_mode are part of the Admin UI contract.
+// Do not rename without updating the Admin UI.
+himport { requireAdmin } from "../../blog-handlers.js";
 import { withCors, handleOptions } from "../../cors.js";
 
 export async function businessesList(request, env) {
@@ -24,8 +27,8 @@ let sql = `
                   b.is_active,
                       -- Blog program state (history)
                           COALESCE(p.enabled, 0)     AS program_enabled,
-                              COALESCE(p.run_mode, '')   AS run_mode,
-                                  p.added_at                 AS program_added_at,
+            COALESCE(p.run_mode, 'manual') AS program_run_mode,
+                        COALESCE(p.run_mode, 'manual') AS run_mode,p.added_at                 AS program_added_at,
                                       p.added_by                 AS program_added_by,
                                           p.notes                    AS program_notes
                                             FROM businesses b
