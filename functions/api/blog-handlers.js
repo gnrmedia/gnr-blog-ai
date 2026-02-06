@@ -1253,8 +1253,60 @@ export async function getReviewVisualsDebug(ctx, token) {
 
 // ---------- Program management ----------
 export async function addProgram(ctx, payload = {}) {
-  // TODO: implement
+  const { env, request } = ctx;
+
+  // Admin auth (returns Response on failure)
+  const admin = requireAdmin({ env, request });
+  if (admin instanceof Response) return admin;
+
+  // Parse JSON body
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return errorResponse(ctx, "Invalid JSON body", 400);
+  }
+
+  const location_id = String(body?.location_id || "").trim();
+  const run_mode = String(body?.run_mode || "manual").trim().toLowerCase();
+  const notes = String(body?.notes || "enabled via Blog AI Admin list").trim();
+
+  if (!location_id) return errorResponse(ctx, "location_id required", 400);
+  if (!["manual", "auto"].includes(run_mode)) {
+    return errorResponse(ctx, "run_mode must be 'manual' or 'auto'", 400);
+  }
+
+  // Schema-tolerant enablement:
+  // Try INSERT including added_at (preferred), fall back if column doesn't exist.
+  try {
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      INSERT INTO blog_program_locations (
+        location_id, enabled, run_mode, notes, added_at
+      ) VALUES (?, 1, ?, ?, datetime('now'))
+      ON CONFLICT(location_id) DO UPDATE SET
+        enabled = 1,
+        run_mode = excluded.run_mode,
+        notes = excluded.notes
+    `).bind(location_id, run_mode, notes).run();
+  } catch (e) {
+    const msg = String(e?.message || e);
+    console.log("PROGRAM_ADD_UPSERT_FALLBACK", { location_id, error: msg });
+
+    // Fallback: same upsert but without added_at (schema-safe)
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      INSERT INTO blog_program_locations (
+        location_id, enabled, run_mode, notes
+      ) VALUES (?, 1, ?, ?)
+      ON CONFLICT(location_id) DO UPDATE SET
+        enabled = 1,
+        run_mode = excluded.run_mode,
+        notes = excluded.notes
+    `).bind(location_id, run_mode, notes).run();
+  }
+
+  return jsonResponse(ctx, { ok: true, action: "enabled", location_id, run_mode });
 }
+
 
 export async function removeProgram(ctx) {
   const { env, request } = ctx;
