@@ -14,7 +14,7 @@ export async function onRequest(context) {
   }
 
   // ------------------------------------------------------------
-  // Admin auth (Access or x-provision-shared-secret fallback)
+  // Admin auth
   // ------------------------------------------------------------
   const admin = await requireAdmin(context);
   if (admin instanceof Response) return admin;
@@ -30,20 +30,29 @@ export async function onRequest(context) {
   }
 
   // ------------------------------------------------------------
-  // Accept BOTH identifiers:
-  // - location_id (Admin UI canonical)
-  // - program_id  (legacy / internal)
+  // Accept canonical identifiers
   // ------------------------------------------------------------
-  const programId = String(body.location_id || body.program_id || "").trim();
+  const programId = String(
+    body.location_id || body.program_id || ""
+  ).trim();
 
-  // Normalize mode to canonical lowercase
-  const modeRaw = String(body.mode || "").trim().toLowerCase();
-  const mode = modeRaw === "auto" || modeRaw === "manual" ? modeRaw : "";
+  // ------------------------------------------------------------
+  // Accept canonical mode fields
+  // ------------------------------------------------------------
+  const modeRaw = String(
+    body.run_mode || body.mode || body.program_run_mode || ""
+  ).trim().toLowerCase();
+
+  const mode = (modeRaw === "auto" || modeRaw === "manual") ? modeRaw : "";
 
   if (!programId || !mode) {
     return new Response(
       JSON.stringify(
-        { ok: false, error: "location_id (or program_id) and mode required (mode must be 'auto' or 'manual')" },
+        {
+          ok: false,
+          error: "location_id and run_mode required (run_mode must be 'auto' or 'manual')",
+          received: Object.keys(body)
+        },
         null,
         2
       ),
@@ -60,8 +69,9 @@ export async function onRequest(context) {
   const result = await setProgramMode(context, programId, mode);
   if (result instanceof Response) return result;
 
-  return new Response(JSON.stringify({ ok: true, ...result }, null, 2), {
+  return new Response(JSON.stringify({ ok: true, location_id: programId, run_mode: mode }, null, 2), {
     status: 200,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
+
