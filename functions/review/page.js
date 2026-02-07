@@ -343,6 +343,71 @@ function buildWowReviewHtml({ token }) {
       padding: 18px 18px 22px;
     }
 
+    /* ============================================================
+       MOBILE PREVIEW FRAME (Published Preview)
+       - narrow like a phone
+       - fixed height with its own scroll
+       ============================================================ */
+    .phoneFrame{
+      width: 390px;              /* iPhone-ish viewport width */
+      max-width: 100%;
+      margin: 8px auto 0;
+      border-radius: 28px;
+      background: #0b0f1a;
+      border: 1px solid rgba(0,0,0,.25);
+      box-shadow: 0 18px 60px rgba(0,0,0,.25);
+      padding: 14px;
+      position: relative;
+    }
+
+    .phoneNotch{
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 140px;
+      height: 18px;
+      border-radius: 0 0 14px 14px;
+      background: rgba(255,255,255,.10);
+      backdrop-filter: blur(6px);
+      pointer-events: none;
+    }
+
+    .phoneScreen{
+      background: #fff;
+      border-radius: 18px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      height: min(720px, 70vh);  /* internal scroll like mobile */
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid rgba(0,0,0,.10);
+    }
+
+    /* Ensure injected render content behaves in a phone viewport */
+    .phoneScreen .gnr-render-root{
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 0;
+    }
+    .phoneScreen img{
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* On small screens, don't force a tall "phone"; just flow normally */
+    @media (max-width: 520px){
+      .phoneFrame{
+        width: 100%;
+        border-radius: 20px;
+        padding: 12px;
+      }
+      .phoneNotch{ display:none; }
+      .phoneScreen{
+        height: auto;
+        max-height: none;
+      }
+    }
+
     /* Keep injected render content readable inside the preview panel */
     .previewBody .gnr-render-root{
       max-width: 980px;
@@ -662,9 +727,12 @@ function buildWowReviewHtml({ token }) {
                   <div class="hint">Reader-grade view</div>
                 </div>
               </div>
-              <div class="previewBody" id="publishedPreview">
-                <div style="padding:14px;border-radius:16px;border:1px dashed rgba(0,0,0,.18);background:#fff;">
-                  Loading preview…
+              <div class="previewBody">
+                <div class="phoneFrame" aria-label="Mobile preview frame">
+                  <div class="phoneNotch" aria-hidden="true"></div>
+                  
+                  <!-- IMPORTANT: keep this id exactly the same so review-ui.js still finds it -->
+                  <div class="phoneScreen" id="publishedPreview">Loading preview...</div>
                 </div>
               </div>
             </div>
