@@ -172,6 +172,62 @@ if (request.method === "POST" && pathname === "/api/blog/review/create") {
   return withCors(request, await onRequest(context));
 }
 
+        // ------------------------------------------------------------
+        // GET /api/blog/review/debug
+        // ------------------------------------------------------------
+        if (request.method === "GET" && pathname === "/api/blog/review/debug") {
+                const { onRequest } = await import(
+                          "./functions/api/blog/review/debug.js"
+                        );
+                return withCors(request, await onRequest(context));
+        }
+
+        // ------------------------------------------------------------
+        // POST /api/blog/review/save
+        // ------------------------------------------------------------
+        if (request.method === "POST" && pathname === "/api/blog/review/save") {
+                const { onRequest } = await import(
+                          "./functions/api/blog/review/save.js"
+                        );
+                return withCors(request, await onRequest(context));
+        }
+
+        // ------------------------------------------------------------
+        // POST /api/blog/review/accept
+        // ------------------------------------------------------------
+        if (request.method === "POST" && pathname === "/api/blog/review/accept") {
+                const { onRequest } = await import(
+                          "./functions/api/blog/review/accept.js"
+                        );
+                return withCors(request, await onRequest(context));
+        }
+
+        // ------------------------------------------------------------
+        // POST /api/blog/review/suggestions/save
+        // ------------------------------------------------------------
+        if (
+                request.method === "POST" &&
+                pathname === "/api/blog/review/suggestions/save"
+              ) {
+                const { onRequest } = await import(
+                          "./functions/api/blog/review/suggestions/save.js"
+                        );
+                return withCors(request, await onRequest(context));
+        }
+
+        // ------------------------------------------------------------
+        // POST /api/blog/review/visuals/save
+        // ------------------------------------------------------------
+        if (
+                request.method === "POST" &&
+                pathname === "/api/blog/review/visuals/save"
+              ) {
+                const { onRequest } = await import(
+                          "./functions/api/blog/review/visuals/save.js"
+                        );
+                return withCors(request, await onRequest(context));
+        }
+
 // ------------------------------------------------------------
 // GET /review (PUBLIC client review page)
 // ------------------------------------------------------------
