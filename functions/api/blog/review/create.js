@@ -1,4 +1,5 @@
-import { requireAdmin, createReviewLink } from "../../blog-handlers.js";
+import { requireAdmin, createReviewLink } from "../_lib/blog-handlers.js";
+
 
 export async function onRequest(context) {
   const { request } = context;

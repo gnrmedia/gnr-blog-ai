@@ -1,4 +1,5 @@
-import { requireAdmin, upsertDraftAsset } from "../../../blog-handlers.js";
+import { requireAdmin, upsertDraftAsset } from "../../_lib/blog-handlers.js";
+
 
 export async function onRequest(context) {
   const { request } = context;
