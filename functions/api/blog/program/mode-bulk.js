@@ -1,8 +1,7 @@
 // Repo: gnr-blog-ai
 // File: functions/api/blog/program/mode-bulk.js
 
-import { requireAdmin, setProgramModeBulk } from "../../blog-handlers.js";
-
+import { requireAdmin, setProgramModeBulk } from "../_lib/blog-handlers.js";
 // ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
