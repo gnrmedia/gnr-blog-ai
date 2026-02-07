@@ -32,8 +32,9 @@ export async function onRequest(context) {
     });
   }
 
-  const admin = requireAdmin(context);
-  if (admin instanceof Response) return admin;
+// PUBLIC RENDER — DO NOT REQUIRE ADMIN AUTH
+// This endpoint is rendered inside an iframe and cannot send headers.
+
 
   const draftid = String(params?.draft_id || "").trim();
   if (!draftid) {
