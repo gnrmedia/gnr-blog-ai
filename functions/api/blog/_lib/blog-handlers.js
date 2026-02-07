@@ -1320,7 +1320,7 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
   if (!draft?.draft_id) return errorResponse(ctx, "Draft not found", 404, { draft_id });
 
   // Block if already approved/published (keeps lifecycle clean)
-  // But return a published_url so the Admin UI can still open the correct page.
+  // Return published_url so Admin UI can still open the canonical renderer.
   const st = String(draft.status || "").toLowerCase();
   if (st === "approved" || st === "published") {
     const apiOrigin = new URL(request.url).origin;
@@ -1334,6 +1334,7 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
       { status: draft.status, action: "use_published_url", published_url }
     );
   }
+
 
 
   // Generate token (base64url-ish)
@@ -1383,14 +1384,19 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
 
   const review_url = `${base.replace(/\/+$/g, "")}/review?t=${encodeURIComponent(token)}`;
 
+  // Provide exact expiry (ISO) for UI display + keep hours for compatibility
+  const expires_at = new Date(Date.now() + (ttlHours * 60 * 60 * 1000)).toISOString();
+
   return jsonResponse(ctx, {
     ok: true,
     review_id,
     draft_id,
     location_id: draft.location_id,
     review_url,
+    expires_at,            // <-- NEW: ISO string
     expires_at_hours: ttlHours,
   });
+
 }
 
 // ------------------------------------------------------------
