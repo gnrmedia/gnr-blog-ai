@@ -1379,10 +1379,21 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
 
   // Build review URL (use request host unless env overrides)
   const base =
-    String(env.PUBLIC_REVIEW_BASE || "").trim() ||
-    `${new URL(request.url).origin}`;
+  // Build review URL
+  // Prefer explicit override, otherwise use the calling Admin UI Origin
+  // (so we don't generate https://api.admin.../review which 404s)
+  const overrideBase = String(env.PUBLIC_REVIEW_BASE || "").trim();
+
+  const originHeader = request.headers.get("Origin");
+  const originBase =
+    originHeader && CORS_ALLOWED_ORIGINS.has(originHeader)
+      ? originHeader
+      : null;
+
+  const base = overrideBase || originBase || `${new URL(request.url).origin}`;
 
   const review_url = `${base.replace(/\/+$/g, "")}/review?t=${encodeURIComponent(token)}`;
+
 
   // Provide exact expiry (ISO) for UI display + keep hours for compatibility
   const expires_at = new Date(Date.now() + (ttlHours * 60 * 60 * 1000)).toISOString();
