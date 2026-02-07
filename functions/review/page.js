@@ -343,6 +343,16 @@ function buildWowReviewHtml({ token }) {
       padding: 18px 18px 22px;
     }
 
+    /* Keep injected render content readable inside the preview panel */
+    .previewBody .gnr-render-root{
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    .previewBody .gnr-render-root img{
+      max-width: 100%;
+      height: auto;
+    }
+
     /* Editor preview typography */
     .previewBody h1,.previewBody h2{
       font-family:"Playfair Display", Georgia, serif;
@@ -636,7 +646,21 @@ function buildWowReviewHtml({ token }) {
             <div class="previewShell">
               <div class="previewTop">
                 <div class="badge"><i></i> Published preview</div>
-                <div class="hint">This is the exact reader experience</div>
+                
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                  <a id="openFullPreviewBtn" href="#" target="_blank" rel="noopener"
+                     style="
+                       display:inline-flex; align-items:center; gap:8px;
+                       padding:8px 10px; border-radius:999px;
+                       background: rgba(11,15,26,.92);
+                       color:#fff; text-decoration:none;
+                       font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+                       border:1px solid rgba(0,0,0,.25);
+                     ">
+                    Open full preview ↗
+                  </a>
+                  <div class="hint">Reader-grade view</div>
+                </div>
               </div>
               <div class="previewBody" id="publishedPreview">
                 <div style="padding:14px;border-radius:16px;border:1px dashed rgba(0,0,0,.18);background:#fff;">
