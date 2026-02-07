@@ -164,18 +164,30 @@ if (
 // ------------------------------------------------------------
 // POST /api/blog/review/create
 // ------------------------------------------------------------
-if (
-  request.method === "POST" &&
-  pathname === "/api/blog/review/create"
-) {
+if (request.method === "POST" && pathname === "/api/blog/review/create") {
   const admin = await requireAdmin(context);
   if (admin instanceof Response) return withCors(request, admin);
 
-  const { onRequest } = await import(
-    "./functions/api/blog/review/create.js"
-  );
+  const { onRequest } = await import("./functions/api/blog/review/create.js");
   return withCors(request, await onRequest(context));
 }
+
+// ------------------------------------------------------------
+// GET /review (PUBLIC client review page)
+// ------------------------------------------------------------
+if (request.method === "GET" && pathname === "/review") {
+  const { onRequest } = await import("./functions/review/page.js");
+  return onRequest(context); // HTML response (no JSON CORS wrapper)
+}
+
+// ------------------------------------------------------------
+// GET /assets/review-ui.js (PUBLIC client UI controller)
+// ------------------------------------------------------------
+if (request.method === "GET" && pathname === "/assets/review-ui.js") {
+  const { onRequest } = await import("./functions/assets/review-ui.js");
+  return onRequest(context); // JS response
+}
+
 
 
     
