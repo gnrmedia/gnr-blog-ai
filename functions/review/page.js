@@ -687,11 +687,6 @@ function buildWowReviewHtml({ token }) {
                         <label class="small">Image slot</label>
                         <select id="clientVisualKey">
                           <option value="hero">hero (feature image)</option>
-                          <option value="infographic_summary">infographic_summary</option>
-                          <option value="process_diagram">process_diagram</option>
-                          <option value="proof_chart">proof_chart</option>
-                          <option value="pull_quote_graphic">pull_quote_graphic</option>
-                          <option value="cta_banner">cta_banner</option>
                         </select>
                       </div>
                       <div style="flex:2">
@@ -811,10 +806,6 @@ function buildWowReviewHtml({ token }) {
     </div>
   </div>
 
-  <!-- Token for JS -->
-  <script>
-    window.__REVIEW_TOKEN__ = ${JSON.stringify(tokenSafe)};
-  </script>
 
   <!-- UI controller -->
   <script src="/assets/review-ui.js?v=wow-b1" defer></script>
