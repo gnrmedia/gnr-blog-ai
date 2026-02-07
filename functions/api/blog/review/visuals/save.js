@@ -107,4 +107,3 @@ async function tokenHash(rawToken, env) {
   const pepper = String(env.REVIEW_TOKEN_PEPPER || "");
   return sha256Hex(`v1|${pepper}|${rawToken}`);
 }
-Review Visuals Save js doc
