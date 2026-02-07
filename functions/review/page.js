@@ -529,16 +529,17 @@ function buildWowReviewHtml({ token }) {
 
     /* Right rail cards */
 .railCard{
-  border:1px solid var(--line);
+  border:1px solid rgba(0,0,0,.08);
   border-radius: var(--radius);
-  background: rgba(255,255,255,0.06);
-  box-shadow: 0 16px 50px rgba(0,0,0,.35);
+  background: rgba(255,255,255,.82);
+  box-shadow: 0 16px 50px rgba(0,0,0,.08);
   overflow:hidden;
+  color: rgba(11,15,26,.82);
 }
 
     .railCard .hd{
       padding:14px 16px 10px;
-      border-bottom:1px solid rgba(255,255,255,.10);
+      border-bottom:1px solid rgba(0,0,0,.08);
       display:flex;
       align-items:center;
       justify-content:space-between;
@@ -549,11 +550,11 @@ function buildWowReviewHtml({ token }) {
   font-size:13px;
   letter-spacing:.14em;
   text-transform:uppercase;
-  color: rgba(255,255,255,.92); /* keep white: railCard is dark */
+  color: rgba(11,15,26,.88);
 }
 
     .railCard .bd{padding:14px 16px 16px;}
-    .railCard p{margin:0 0 10px; color: rgba(255,255,255,.86); font-size:13px; line-height:1.5;}
+    .railCard p{margin:0 0 10px; color: rgba(11,15,26,.72); font-size:13px; line-height:1.5;}
 
     textarea, input, select{
       width:100%;
@@ -740,6 +741,37 @@ function buildWowReviewHtml({ token }) {
 }
 
     
+
+/* ============================================================
+   CONTRAST FIX: Right-column railCards (Direction / What Happens)
+   ============================================================ */
+.railCard .small{
+  color: rgba(11,15,26,.52);
+}
+.railCard .bd b{
+  color: rgba(11,15,26,.92);
+}
+.railCard textarea,
+.railCard input,
+.railCard select{
+  background: rgba(0,0,0,.04);
+  border-color: rgba(0,0,0,.12);
+  color: rgba(11,15,26,.88);
+}
+.railCard textarea::placeholder,
+.railCard input::placeholder{
+  color: rgba(11,15,26,.38);
+}
+.railCard .ghost{
+  background: rgba(11,15,26,.08);
+  color: rgba(11,15,26,.82);
+  border: 1px solid rgba(0,0,0,.10);
+}
+.railCard .ghost:hover{
+  background: rgba(11,15,26,.14);
+}
+
+
   </style>
 </head>
 
@@ -850,7 +882,7 @@ function buildWowReviewHtml({ token }) {
 
                 <div style="height:10px"></div>
 
-                <div class="railCard" style="background:rgba(0,0,0,.18); border-color: rgba(255,255,255,.10)">
+                <div class="railCard" style="background: rgba(255,255,255,.72); border-color: rgba(0,0,0,.08)">
                   <div class="hd">
                     <h3>Swap images</h3>
                     <span class="small">optional</span>
@@ -923,7 +955,7 @@ function buildWowReviewHtml({ token }) {
 
             <div style="height:12px"></div>
 
-            <div class="railCard" style="background: rgba(255,255,255,.04)">
+            <div class="railCard" style="background: rgba(255,255,255,.72)">
               <div class="hd">
                 <h3>What happens after accept?</h3>
                 <span class="small">automatic</span>
