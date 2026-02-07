@@ -13,19 +13,19 @@ export async function onRequest(context) {
     });
   }
 
-  const admin = requireAdmin(context);
-  if (admin instanceof Response) return admin;
-
   // Worker router does NOT populate context.params. Extract draft_id from URL path.
-    // Expected path: /api/blog/draft/get/<draft_id>
-    const url = new URL(request.url);
-    const parts = url.pathname.split("/");
-    const draftid = String(parts[parts.length - 1] || "").trim();if (!draftid) {
+  // Expected path: /api/blog/draft/get/<draft_id>
+  const url = new URL(request.url);
+  const parts = url.pathname.split("/");
+  const draftid = String(parts[parts.length - 1] || "").trim();
+
+  if (!draftid) {
     return new Response(JSON.stringify({ ok: false, error: "draft_id required" }), {
       status: 400,
       headers: { "content-type": "application/json; charset=utf-8" },
     });
   }
+
 
   // IMPORTANT: getDraftById() already returns a Response (jsonResponse).
   // Do NOT wrap it again.
