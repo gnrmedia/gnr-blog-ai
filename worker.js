@@ -162,6 +162,20 @@ if (
   return withCors(request, await onRequest(context));
 }
 
+  // ------------------------------------------------------------
+  // POST /api/blog/draft/delete
+  // ------------------------------------------------------------
+  if (request.method === "POST" && pathname === "/api/blog/draft/delete") {
+    const admin = await requireAdmin(context);
+    if (admin instanceof Response) return withCors(request, admin);
+
+    const { onRequest } = await import(
+      "./functions/api/blog/draft/delete.js"
+    );
+    return withCors(request, await onRequest(context));
+  }
+
+
 // ------------------------------------------------------------
 // POST /api/blog/review/create
 // ------------------------------------------------------------
