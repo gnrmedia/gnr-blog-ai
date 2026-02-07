@@ -383,6 +383,44 @@ function buildWowReviewHtml({ token }) {
       border: 1px solid rgba(0,0,0,.10);
     }
 
+    /* --- Mobile preview readability overrides (ONLY inside phone) --- */
+.phoneScreen{
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+/* Prevent giant headings + force wrapping */
+.phoneScreen h1,
+.phoneScreen h2,
+.phoneScreen h3{
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin-top: 18px;
+  margin-bottom: 10px;
+}
+
+/* Clamp headings to mobile-friendly sizes */
+.phoneScreen h1{ font-size: 32px; }
+.phoneScreen h2{ font-size: 24px; }
+.phoneScreen h3{ font-size: 20px; }
+
+/* Paragraphs + lists */
+.phoneScreen p,
+.phoneScreen li{
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* Add comfortable padding inside the “screen” */
+.phoneScreen .gnr-render-root{
+  padding: 18px 16px 22px;
+}
+
+
     /* Ensure injected render content behaves in a phone viewport */
     .phoneScreen .gnr-render-root{
       max-width: 100%;
