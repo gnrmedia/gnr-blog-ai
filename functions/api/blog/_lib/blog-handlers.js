@@ -1382,28 +1382,271 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
   });
 }
 
+// ------------------------------------------------------------
+// REVIEW HELPERS
+// ------------------------------------------------------------
+async function sha256Hex(s) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(s || "")));
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
-export async function acceptReview(_ctx, token, follow = {}) {
-      // TODO: implement
+
+async function getReviewRowByToken(ctx, token) {
+  const { env } = ctx;
+  const t = String(token || "").trim();
+  if (!t) return { error: errorResponse(ctx, "token required", 400) };
+
+  const token_hash = await sha256Hex(t);
+
+  const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT *
+      FROM blog_draft_reviews
+     WHERE token_hash = ?
+     LIMIT 1
+  `).bind(token_hash).first();
+
+  if (!row) return { error: errorResponse(ctx, "Review token not found", 404) };
+
+  // Expiry check (fail closed)
+  try {
+    const raw = String(row.expires_at || "").trim();
+    if (raw) {
+      const iso = raw.includes("T") ? raw : raw.replace(" ", "T") + "Z";
+      const exp = new Date(iso);
+      if (!isNaN(exp.getTime()) && exp.getTime() < Date.now()) {
+        return { error: errorResponse(ctx, "Review token expired", 410) };
+      }
+    }
+  } catch (_) {}
+
+  return { row, token_hash };
 }
-export async function saveReviewEdits(_ctx, token, content_markdown, follow = {}) {
-      // TODO: implement
+
+function normFollow(obj = {}) {
+  const o = (obj && typeof obj === "object") ? obj : {};
+  const pick = (v) => (v === undefined ? null : (v === null ? "" : String(v)));
+  return {
+    follow_emphasis: pick(o.follow_emphasis ?? o.emphasis),
+    follow_avoid: pick(o.follow_avoid ?? o.avoid),
+    client_topic_suggestions: pick(o.client_topic_suggestions ?? o.topic_suggestions ?? o.suggestions),
+  };
 }
+
+// ------------------------------------------------------------
+// REVIEW: Save edits (does NOT approve)
+// ------------------------------------------------------------
+export async function saveReviewEdits(ctx, token, content_markdown, follow = {}) {
+  const { env } = ctx;
+
+  const { error, row, token_hash } = await getReviewRowByToken(ctx, token);
+  if (error) return error;
+
+  const md = String(content_markdown || "");
+  const f = normFollow(follow);
+
+  // Schema-tolerant update (full fields if present; fallback to md only)
+  try {
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      UPDATE blog_draft_reviews
+         SET client_content_markdown = ?,
+             follow_emphasis = CASE WHEN ? IS NULL THEN follow_emphasis ELSE ? END,
+             follow_avoid = CASE WHEN ? IS NULL THEN follow_avoid ELSE ? END,
+             client_topic_suggestions = CASE WHEN ? IS NULL THEN client_topic_suggestions ELSE ? END,
+             updated_at = datetime('now')
+       WHERE token_hash = ?
+    `).bind(
+      md,
+      f.follow_emphasis, f.follow_emphasis,
+      f.follow_avoid, f.follow_avoid,
+      f.client_topic_suggestions, f.client_topic_suggestions,
+      token_hash
+    ).run();
+  } catch (e) {
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      UPDATE blog_draft_reviews
+         SET client_content_markdown = ?,
+             updated_at = datetime('now')
+       WHERE token_hash = ?
+    `).bind(md, token_hash).run();
+  }
+
+  return jsonResponse(ctx, { ok: true, action: "saved", draft_id: row.draft_id });
+}
+
+// ------------------------------------------------------------
+// REVIEW: Save suggestions only (no content overwrite)
+// ------------------------------------------------------------
+export async function saveReviewSuggestions(ctx, token, payload = {}) {
+  const { env } = ctx;
+
+  const { error, row, token_hash } = await getReviewRowByToken(ctx, token);
+  if (error) return error;
+
+  const f = normFollow(payload);
+
+  try {
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      UPDATE blog_draft_reviews
+         SET follow_emphasis = CASE WHEN ? IS NULL THEN follow_emphasis ELSE ? END,
+             follow_avoid = CASE WHEN ? IS NULL THEN follow_avoid ELSE ? END,
+             client_topic_suggestions = CASE WHEN ? IS NULL THEN client_topic_suggestions ELSE ? END,
+             updated_at = datetime('now')
+       WHERE token_hash = ?
+    `).bind(
+      f.follow_emphasis, f.follow_emphasis,
+      f.follow_avoid, f.follow_avoid,
+      f.client_topic_suggestions, f.client_topic_suggestions,
+      token_hash
+    ).run();
+  } catch (e) {
+    return errorResponse(ctx, "Suggestions save failed", 500, { detail: String(e?.message || e) });
+  }
+
+  return jsonResponse(ctx, { ok: true, action: "suggestions_saved", draft_id: row.draft_id });
+}
+
+// ------------------------------------------------------------
+// REVIEW: Accept (approves + locks draft)
+// - Writes client_content_markdown into blog_drafts (if present)
+// - Sets blog_drafts.status=approved and approved_at
+// ------------------------------------------------------------
+export async function acceptReview(ctx, token, follow = {}) {
+  const { env } = ctx;
+
+  const { error, row, token_hash } = await getReviewRowByToken(ctx, token);
+  if (error) return error;
+
+  const draft_id = String(row.draft_id || "").trim();
+  if (!draft_id) return errorResponse(ctx, "Review row missing draft_id", 500);
+
+  const draft = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT draft_id, status, content_markdown
+      FROM blog_drafts
+     WHERE draft_id = ?
+     LIMIT 1
+  `).bind(draft_id).first();
+
+  if (!draft?.draft_id) return errorResponse(ctx, "Draft not found", 404, { draft_id });
+
+  const st = String(draft.status || "").toLowerCase();
+  if (st === DRAFT_STATUS.APPROVED || st === DRAFT_STATUS.PUBLISHED) {
+    return jsonResponse(ctx, { ok: true, action: "already_approved", draft_id });
+  }
+
+  const f = normFollow(follow);
+
+  // Use client content if present; otherwise keep existing draft copy
+  const md = String(row.client_content_markdown || "").trim()
+    ? String(row.client_content_markdown)
+    : String(draft.content_markdown || "");
+
+  const html = markdownToHtml(stripInternalTelemetryComments(md));
+
+  await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    UPDATE blog_drafts
+       SET content_markdown = ?,
+           content_html = ?,
+           status = ?,
+           approved_at = datetime('now'),
+           updated_at = datetime('now')
+     WHERE draft_id = ?
+  `).bind(md, html, DRAFT_STATUS.APPROVED, draft_id).run();
+
+  // Mark review accepted (schema tolerant)
+  try {
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      UPDATE blog_draft_reviews
+         SET status = 'ACCEPTED',
+             decided_at = datetime('now'),
+             follow_emphasis = CASE WHEN ? IS NULL THEN follow_emphasis ELSE ? END,
+             follow_avoid = CASE WHEN ? IS NULL THEN follow_avoid ELSE ? END,
+             client_topic_suggestions = CASE WHEN ? IS NULL THEN client_topic_suggestions ELSE ? END,
+             updated_at = datetime('now')
+       WHERE token_hash = ?
+    `).bind(
+      f.follow_emphasis, f.follow_emphasis,
+      f.follow_avoid, f.follow_avoid,
+      f.client_topic_suggestions, f.client_topic_suggestions,
+      token_hash
+    ).run();
+  } catch (e) {
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      UPDATE blog_draft_reviews
+         SET status = 'ACCEPTED',
+             updated_at = datetime('now')
+       WHERE token_hash = ?
+    `).bind(token_hash).run();
+  }
+
+  return jsonResponse(ctx, { ok: true, action: "approved", draft_id });
+}
+
+// ------------------------------------------------------------
+// REVIEW: Submit final (save + accept)
+// ------------------------------------------------------------
 export async function submitReviewFinal(ctx, token, content_markdown) {
-      // TODO: implement
+  const saved = await saveReviewEdits(ctx, token, content_markdown, {});
+  if (saved instanceof Response && !saved.ok) return saved;
+  return acceptReview(ctx, token, {});
 }
-export async function saveReviewSuggestions(_ctx, token, payload = {}) {
-      // TODO: implement
+
+// ------------------------------------------------------------
+// REVIEW: Save visual URL against the draft (token-protected)
+// ------------------------------------------------------------
+export async function saveReviewVisualUrl(ctx, token, visual_key, imageurl) {
+  const { error, row } = await getReviewRowByToken(ctx, token);
+  if (error) return error;
+
+  const draft_id = String(row.draft_id || "").trim();
+  if (!draft_id) return errorResponse(ctx, "Review row missing draft_id", 500);
+
+  return upsertDraftAsset(ctx, draft_id, visual_key, {
+    image_url: String(imageurl || "").trim(),
+    provider: "review",
+    asset_type: "image",
+    status: "ready",
+  });
 }
-export async function saveReviewVisualUrl(_ctx, token, visual_key, imageurl) {
-      // TODO: implement
-}
+
+// ------------------------------------------------------------
+// REVIEW: Debug
+// ------------------------------------------------------------
 export async function getReviewDebug(ctx, token) {
-      // TODO: implement
+  const { env } = ctx;
+
+  const { error, row } = await getReviewRowByToken(ctx, token);
+  if (error) return error;
+
+  const draft = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT draft_id, location_id, status, title, approved_at, updated_at, created_at
+      FROM blog_drafts
+     WHERE draft_id = ?
+     LIMIT 1
+  `).bind(String(row.draft_id || "")).first();
+
+  // redact token_hash
+  const safe = { ...row };
+  delete safe.token_hash;
+
+  return jsonResponse(ctx, { ok: true, review: safe, draft: draft || null });
 }
+
 export async function getReviewVisualsDebug(ctx, token) {
-      // TODO: implement
+  const { env } = ctx;
+
+  const { error, row } = await getReviewRowByToken(ctx, token);
+  if (error) return error;
+
+  const draft_id = String(row.draft_id || "").trim();
+  const rs = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT visual_key, image_url, provider, status, updated_at
+      FROM blog_draft_assets
+     WHERE draft_id = ?
+     ORDER BY visual_key ASC
+  `).bind(draft_id).all();
+
+  return jsonResponse(ctx, { ok: true, draft_id, assets: rs?.results || [] });
 }
+
 
 // ---------- Program management ----------
 export async function addProgram(ctx, payload = {}) {
