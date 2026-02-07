@@ -90,6 +90,95 @@ export default {
       return withCors(request, await programModeBulk(context));
     }
 
+// ------------------------------------------------------------
+// POST /api/blog/draft/create
+// ------------------------------------------------------------
+if (request.method === "POST" && pathname === "/api/blog/draft/create") {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import(
+    "./functions/api/blog/draft/create.js"
+  );
+  return withCors(request, await onRequest(context));
+}
+
+// ------------------------------------------------------------
+// GET /api/blog/draft/get/:draft_id
+// ------------------------------------------------------------
+if (
+  request.method === "GET" &&
+  pathname.startsWith("/api/blog/draft/get/")
+) {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import(
+    "./functions/api/blog/draft/get/[draft_id].js"
+  );
+  return withCors(request, await onRequest(context));
+}
+
+// ------------------------------------------------------------
+// POST /api/blog/draft/generate-ai
+// ------------------------------------------------------------
+if (request.method === "POST" && pathname === "/api/blog/draft/generate-ai") {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import(
+    "./functions/api/blog/draft/generate-ai.js"
+  );
+  return withCors(request, await onRequest(context));
+}
+
+// ------------------------------------------------------------
+// GET /api/blog/draft/render/:draft_id
+// ------------------------------------------------------------
+if (
+  request.method === "GET" &&
+  pathname.startsWith("/api/blog/draft/render/")
+) {
+  const { onRequest } = await import(
+    "./functions/api/blog/draft/render/[draft_id].js"
+  );
+  return onRequest(context); // HTML response, do NOT wrap with JSON CORS
+}
+
+// ------------------------------------------------------------
+// POST /api/blog/draft/asset/upsert
+// ------------------------------------------------------------
+if (
+  request.method === "POST" &&
+  pathname === "/api/blog/draft/asset/upsert"
+) {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import(
+    "./functions/api/blog/draft/asset/upsert.js"
+  );
+  return withCors(request, await onRequest(context));
+}
+
+// ------------------------------------------------------------
+// POST /api/blog/review/create
+// ------------------------------------------------------------
+if (
+  request.method === "POST" &&
+  pathname === "/api/blog/review/create"
+) {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import(
+    "./functions/api/blog/review/create.js"
+  );
+  return withCors(request, await onRequest(context));
+}
+
+
+    
     // ------------------------------------------------------------
     // 404
     // ------------------------------------------------------------
