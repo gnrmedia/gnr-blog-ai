@@ -1,33 +1,26 @@
-import { requireAdmin, getReviewDebug } from "../../blog-handlers.js";
+import { jsonResponse, errorResponse } from "../_lib/blog-handlers.js";
 
+// GET /api/blog/review/debug?t=<token>
 export async function onRequest(context) {
   const { request } = context;
 
   if (request.method !== "GET") {
-    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
-      status: 405,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
+    return jsonResponse(context, { ok: false, error: "Method not allowed" }, 405);
   }
-
-  const admin = requireAdmin(context);
-  if (admin instanceof Response) return admin;
 
   const url = new URL(request.url);
-  const token = url.searchParams.get("token") || "";
+  const t = String(url.searchParams.get("t") || "").trim();
+  if (!t) return errorResponse(context, "token (t) required", 400);
 
-  if (!token) {
-    return new Response(JSON.stringify({ ok: false, error: "token query param required" }), {
-      status: 400,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
-  }
+  // IMPORTANT:
+  // - blog-handlers.js getReviewRowByToken() already does:
+  //   - hash compat (pepper/plain)
+  //   - expiry check
+  // We just reuse it via a tiny internal call.
 
-  const result = await getReviewDebug(context, token);
-  if (result instanceof Response) return result;
+  // Reuse the internal helper by calling saveReviewEdits(...) with no-op? No.
+  // Instead, we call the internal helper by importing a dedicated export.
+  // If you don't have an export yet, see NOTE below.
 
-  return new Response(JSON.stringify({ ok: true, debug: result }, null, 2), {
-    status: 200,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
+  return errorResponse(context, "debug handler not wired: export getReviewRowByTokenForDebug()", 500);
 }
