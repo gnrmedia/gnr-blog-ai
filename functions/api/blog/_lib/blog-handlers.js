@@ -1379,7 +1379,6 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
 
   // Build review URL
   // Prefer explicit override, otherwise use the calling Admin UI Origin
-  // (so we don't generate https://api.admin.../review which 404s)
   const overrideBase = String(env.PUBLIC_REVIEW_BASE || "").trim();
 
   const originHeader = request.headers.get("Origin");
@@ -1391,6 +1390,7 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
   const base = overrideBase || originBase || new URL(request.url).origin;
 
   const review_url = `${String(base).replace(/\/+$/g, "")}/review?t=${encodeURIComponent(token)}`;
+
 
 
 
