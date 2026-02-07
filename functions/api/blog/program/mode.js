@@ -1,8 +1,7 @@
 // Repo: gnr-blog-ai
 // File: functions/api/blog/program/mode.js
 
-import { requireAdmin, setProgramMode } from "../../blog-handlers.js";
-
+import { requireAdmin, setProgramMode } from "../_lib/blog-handlers.js";
 // ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
