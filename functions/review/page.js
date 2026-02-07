@@ -528,13 +528,15 @@ function buildWowReviewHtml({ token }) {
     }
 
     /* Right rail cards */
-    .railCard{
-      border:1px solid var(--line);
-      border-radius: var(--radius);
-      background: rgba(255,255,255,0.06);
-      box-shadow: 0 16px 50px rgba(0,0,0,.35);
-      overflow:hidden;
-    }
+.railCard{
+  border:1px solid rgba(255,255,255,.14);
+  border-radius: var(--radius);
+  background: rgba(0,0,0,.28); /* darker so white text reads */
+  box-shadow: 0 16px 50px rgba(0,0,0,.35);
+  overflow:hidden;
+  backdrop-filter: blur(10px);
+}
+
     .railCard .hd{
       padding:14px 16px 10px;
       border-bottom:1px solid rgba(255,255,255,.10);
@@ -552,7 +554,7 @@ function buildWowReviewHtml({ token }) {
 }
 
     .railCard .bd{padding:14px 16px 16px;}
-    .railCard p{margin:0 0 10px; color: rgba(255,255,255,.78); font-size:13px; line-height:1.5;}
+    .railCard p{margin:0 0 10px; color: rgba(255,255,255,.86); font-size:13px; line-height:1.5;}
 
     textarea, input, select{
       width:100%;
@@ -576,7 +578,7 @@ function buildWowReviewHtml({ token }) {
 
     .row{display:flex; gap:10px; flex-wrap:wrap;}
     .row > *{flex:1; min-width: 220px;}
-    .small{font-size:12px;color:var(--faint)}
+    .small{font-size:12px;color:rgba(255,255,255,.62)}
     .divider{height:1px; background: rgba(255,255,255,.10); margin:12px 0;}
 
     /* Sticky action bar */
