@@ -1319,11 +1319,22 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
 
   if (!draft?.draft_id) return errorResponse(ctx, "Draft not found", 404, { draft_id });
 
-  // Block if already approved (keeps lifecycle clean)
+  // Block if already approved/published (keeps lifecycle clean)
+  // But return a published_url so the Admin UI can still open the correct page.
   const st = String(draft.status || "").toLowerCase();
   if (st === "approved" || st === "published") {
-    return errorResponse(ctx, "Review link not allowed for approved/published drafts", 409, { status: draft.status });
+    const apiOrigin = new URL(request.url).origin;
+    const published_url =
+      `${apiOrigin}/api/blog/draft/render/${encodeURIComponent(draft_id)}?view=generic`;
+
+    return errorResponse(
+      ctx,
+      "Review link not allowed for approved/published drafts",
+      409,
+      { status: draft.status, action: "use_published_url", published_url }
+    );
   }
+
 
   // Generate token (base64url-ish)
   const bytes = new Uint8Array(32);
