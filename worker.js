@@ -1,7 +1,7 @@
 // Repo: gnr-blog-ai
 // File: worker.js
 
-import { requireAdmin, removeProgram, addProgram } from "./functions/api/blog/_lib/blog-handlers.js";
+import { requireAdmin, removeProgram, addProgram, listBusinesses } from "./functions/api/blog/_lib/blog-handlers.js";
 import { handleOptions, withCors } from "./functions/api/cors.js";
 
 import { onRequest as programMode } from "./functions/api/blog/program/mode.js";
@@ -22,7 +22,18 @@ export default {
     }
 
     const context = { request, env, ctx };
+    // ------------------------------------------------------------
+    // GET /api/blog/businesses/list
+    // ------------------------------------------------------------
+    if (request.method === "GET" && pathname === "/api/blog/businesses/list") {
+      const admin = await requireAdmin(context);
+      if (admin instanceof Response) return withCors(request, admin);
 
+      const res = await listBusinesses(context);
+      return withCors(request, res);
+    }
+
+    
     // ------------------------------------------------------------
     // GET /api/blog/drafts/list  (Draft history per location)
     // ------------------------------------------------------------
