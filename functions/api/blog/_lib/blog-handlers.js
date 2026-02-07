@@ -1236,6 +1236,7 @@ export async function listDraftsForLocation(ctx, locationid, limit = 20) {
       approved_at
     FROM blog_drafts
     WHERE location_id LIKE ? AND length(location_id) = ?
+    AND deleted_at IS NULL
     ORDER BY
       datetime(approved_at) DESC,
       datetime(updated_at) DESC,
