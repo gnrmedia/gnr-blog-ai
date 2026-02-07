@@ -251,7 +251,7 @@ function buildJs() {
     "                var styles = doc.querySelectorAll('style');",
     "                if(styles && styles.length){",
     "                  for(var i=0;i<styles.length;i++){",
-    "                    cssText += (styles[i].textContent || '') + '\n';",
+    "                 cssText += (styles[i].textContent || '') + '\\n';",
     "                  }",
     "                }",
     "                bodyHtml = (doc.body && doc.body.innerHTML) ? doc.body.innerHTML : html;",
