@@ -1343,9 +1343,10 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
   const token = btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 
+
   // SHA-256 hash token for storage
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  const token_hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+  const { primary: token_hash } = await tokenHashCompat(env, token);
+
 
   // TTL (hours)
   const ttlHours = Math.min(
@@ -1417,19 +1418,40 @@ async function sha256Hex(s) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+async function tokenHashCompat(env, token) {
+  const t = String(token || "").trim();
+  if (!t) return { primary: "", fallbacks: [] };
+
+  // Legacy scheme (preferred if pepper exists)
+  const pepper = String(env?.REVIEW_TOKEN_PEPPER || "").trim();
+  if (pepper) {
+    const v1 = await sha256Hex(`v1|${pepper}|${t}`);
+    const plain = await sha256Hex(t);
+    return { primary: v1, fallbacks: [plain] };
+  }
+
+  // No pepper: plain SHA256(token)
+  const plain = await sha256Hex(t);
+  return { primary: plain, fallbacks: [] };
+}
+
 async function getReviewRowByToken(ctx, token) {
   const { env } = ctx;
   const t = String(token || "").trim();
   if (!t) return { error: errorResponse(ctx, "token required", 400) };
 
-  const token_hash = await sha256Hex(t);
+  const { primary, fallbacks } = await tokenHashCompat(env, t);
+  const hashes = [primary, ...(fallbacks || [])].filter(Boolean);
 
   const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
     SELECT *
       FROM blog_draft_reviews
-     WHERE token_hash = ?
+     WHERE token_hash IN (${hashes.map(() => "?").join(",")})
      LIMIT 1
-  `).bind(token_hash).first();
+  `).bind(...hashes).first();
+
+  const token_hash = primary; // keep returning primary for downstream updates
+;
 
   if (!row) return { error: errorResponse(ctx, "Review token not found", 404) };
 
