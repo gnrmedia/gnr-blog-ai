@@ -1443,16 +1443,21 @@ async function getReviewRowByToken(ctx, token) {
   const { primary, fallbacks } = await tokenHashCompat(env, t);
   const hashes = [primary, ...(fallbacks || [])].filter(Boolean);
 
-  const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-    SELECT *
-      FROM blog_draft_reviews
-     WHERE token_hash IN (${hashes.map(() => "?").join(",")})
-     LIMIT 1
-  `).bind(...hashes).first();
+  if (!hashes.length) {
+    return { error: errorResponse(ctx, "token required", 400) };
+  }
 
-  const token_hash = primary; // keep returning primary for downstream updates
-;
-  if (!hashes.length) return { error: errorResponse(ctx, "token required", 400) };
+  const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+
+
+  SELECT *
+    FROM blog_draft_reviews
+   WHERE token_hash IN (${hashes.map(() => "?").join(",")})
+   LIMIT 1
+`).bind(...hashes).first();
+
+const token_hash = primary; // canonical hash for downstream updates
+
 
   if (!row) return { error: errorResponse(ctx, "Review token not found", 404) };
 
@@ -1677,7 +1682,14 @@ export async function getReviewDebug(ctx, token) {
   const safe = { ...row };
   delete safe.token_hash;
 
-  return jsonResponse(ctx, { ok: true, review: safe, draft: draft || null });
+  return jsonResponse(ctx, {
+    ok: true,
+    review: safe,
+    draft: draft || null,
+    draft_id: safe.draft_id || draft?.draft_id || null,
+    status: draft?.status || safe.status || null,
+  });
+
 }
 
 export async function getReviewVisualsDebug(ctx, token) {
