@@ -529,12 +529,11 @@ function buildWowReviewHtml({ token }) {
 
     /* Right rail cards */
 .railCard{
-  border:1px solid rgba(255,255,255,.14);
+  border:1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(0,0,0,.28); /* darker so white text reads */
+  background: rgba(255,255,255,0.06);
   box-shadow: 0 16px 50px rgba(0,0,0,.35);
   overflow:hidden;
-  backdrop-filter: blur(10px);
 }
 
     .railCard .hd{
@@ -701,6 +700,46 @@ function buildWowReviewHtml({ token }) {
 
     /* State helpers */
     .hide{display:none !important;}
+
+/* ============================================================
+   CONTRAST FIX: Top step chips (Preview / Tweak / Direction)
+   ============================================================ */
+
+/* Make chip text readable on light glass */
+.chip{
+  background: rgba(255,255,255,.72) !important;
+  border: 1px solid rgba(0,0,0,.10) !important;
+  color: rgba(11,15,26,.92) !important;
+  box-shadow: 0 10px 26px rgba(0,0,0,.10) !important;
+}
+
+.chip b{
+  color: rgba(11,15,26,.92) !important;
+}
+
+.chip .small{
+  color: rgba(11,15,26,.62) !important;
+}
+
+/* Keep active chip clearly highlighted */
+.chip.active,
+.chip[data-active="1"]{
+  background: rgba(11,15,26,.92) !important;
+  border-color: rgba(0,0,0,.25) !important;
+  color: #fff !important;
+}
+
+.chip.active b,
+.chip[data-active="1"] b{
+  color: #fff !important;
+}
+
+.chip.active .small,
+.chip[data-active="1"] .small{
+  color: rgba(255,255,255,.74) !important;
+}
+
+    
   </style>
 </head>
 
