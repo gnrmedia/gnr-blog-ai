@@ -1452,6 +1452,7 @@ async function getReviewRowByToken(ctx, token) {
 
   const token_hash = primary; // keep returning primary for downstream updates
 ;
+  if (!hashes.length) return { error: errorResponse(ctx, "token required", 400) };
 
   if (!row) return { error: errorResponse(ctx, "Review token not found", 404) };
 
