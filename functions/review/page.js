@@ -246,13 +246,14 @@ function buildWowReviewHtml({ token }) {
       align-items:flex-start;
       justify-content:space-between;
     }
-    .panelHeader h2{
-      margin:0;
-      font-size:14px;
-      letter-spacing:.14em;
-      text-transform:uppercase;
-      color: rgba(255,255,255,.86);
-    }
+.panelHeader h2{
+  margin:0;
+  font-size:14px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color: rgba(11,15,26,.82); /* was white; now readable on light header */
+}
+
     .panelHeader p{
       margin:6px 0 0;
       font-size:13px;
@@ -542,15 +543,16 @@ function buildWowReviewHtml({ token }) {
       justify-content:space-between;
       gap:12px;
     }
-    .railCard .hd h3{
-      margin:0;
-      font-size:13px;
-      letter-spacing:.14em;
-      text-transform:uppercase;
-      color: rgba(255,255,255,.86);
-    }
+.railCard .hd h3{
+  margin:0;
+  font-size:13px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color: rgba(255,255,255,.92); /* keep white: railCard is dark */
+}
+
     .railCard .bd{padding:14px 16px 16px;}
-    .railCard p{margin:0 0 10px; color: var(--muted); font-size:13px; line-height:1.5;}
+    .railCard p{margin:0 0 10px; color: rgba(255,255,255,.78); font-size:13px; line-height:1.5;}
 
     textarea, input, select{
       width:100%;
