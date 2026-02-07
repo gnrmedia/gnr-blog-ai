@@ -126,11 +126,12 @@ if (request.method === "POST" && pathname === "/api/blog/draft/generate-ai") {
   const admin = await requireAdmin(context);
   if (admin instanceof Response) return withCors(request, admin);
 
-  const { onRequest } = await import(
+  const { onRequestPost } = await import(
     "./functions/api/blog/draft/generate-ai.js"
   );
-  return withCors(request, await onRequest(context));
+  return withCors(request, await onRequestPost(context));
 }
+
 
 // ------------------------------------------------------------
 // GET /api/blog/draft/render/:draft_id
