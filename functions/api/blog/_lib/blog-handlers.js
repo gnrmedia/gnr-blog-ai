@@ -1299,8 +1299,89 @@ export async function upsertDraftAsset(ctx, draftid, key, assetData) {
 }
 
 // ---------- Review flow ----------
-export async function createReviewLink(_ctx, draftid, clientemail = null) {
-      // TODO: implement
+export async function createReviewLink(ctx, draftid, clientemail = null) {
+  const { env, request } = ctx;
+
+  // Admin auth
+  const admin = requireAdmin(ctx);
+  if (admin instanceof Response) return admin;
+
+  const draft_id = String(draftid || "").trim();
+  if (!draft_id) return errorResponse(ctx, "draft_id required", 400);
+
+  // Load draft (need location_id for review row)
+  const draft = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT draft_id, location_id, status
+      FROM blog_drafts
+     WHERE draft_id = ?
+     LIMIT 1
+  `).bind(draft_id).first();
+
+  if (!draft?.draft_id) return errorResponse(ctx, "Draft not found", 404, { draft_id });
+
+  // Block if already approved (keeps lifecycle clean)
+  const st = String(draft.status || "").toLowerCase();
+  if (st === "approved" || st === "published") {
+    return errorResponse(ctx, "Review link not allowed for approved/published drafts", 409, { status: draft.status });
+  }
+
+  // Generate token (base64url-ish)
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const token = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+
+  // SHA-256 hash token for storage
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const token_hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+  // TTL (hours)
+  const ttlHours = Math.min(
+    Math.max(parseInt(String(env.REVIEW_TOKEN_TTL_HOURS || "168"), 10) || 168, 1),
+    24 * 30 // cap 30 days
+  );
+
+  // Persist review row (schema-tolerant to extra columns)
+  const review_id = crypto.randomUUID();
+  const email = clientemail ? String(clientemail).trim().toLowerCase() : null;
+
+  // Status: ISSUED (matches your lifecycle semantics)
+  const status = "ISSUED";
+
+  // Write
+  await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    INSERT INTO blog_draft_reviews (
+      review_id, draft_id, location_id, token_hash, expires_at, status, client_email, created_at
+    ) VALUES (
+      ?, ?, ?, ?, datetime('now', ?), ?, ?, datetime('now')
+    )
+  `).bind(
+    review_id,
+    draft_id,
+    String(draft.location_id || ""),
+    token_hash,
+    `+${ttlHours} hours`,
+    status,
+    email
+  ).run();
+
+  // Build review URL (use request host unless env overrides)
+  const base =
+    String(env.PUBLIC_REVIEW_BASE || "").trim() ||
+    `${new URL(request.url).origin}`;
+
+  const review_url = `${base.replace(/\/+$/g, "")}/review?t=${encodeURIComponent(token)}`;
+
+  return jsonResponse(ctx, {
+    ok: true,
+    review_id,
+    draft_id,
+    location_id: draft.location_id,
+    review_url,
+    expires_at_hours: ttlHours,
+  });
+}
+
 }
 export async function acceptReview(_ctx, token, follow = {}) {
       // TODO: implement
