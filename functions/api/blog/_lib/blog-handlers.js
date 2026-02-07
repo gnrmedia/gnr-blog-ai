@@ -1377,8 +1377,6 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
     email
   ).run();
 
-  // Build review URL (use request host unless env overrides)
-  const base =
   // Build review URL
   // Prefer explicit override, otherwise use the calling Admin UI Origin
   // (so we don't generate https://api.admin.../review which 404s)
@@ -1390,9 +1388,10 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
       ? originHeader
       : null;
 
-  const base = overrideBase || originBase || `${new URL(request.url).origin}`;
+  const base = overrideBase || originBase || new URL(request.url).origin;
 
-  const review_url = `${base.replace(/\/+$/g, "")}/review?t=${encodeURIComponent(token)}`;
+  const review_url = `${String(base).replace(/\/+$/g, "")}/review?t=${encodeURIComponent(token)}`;
+
 
 
   // Provide exact expiry (ISO) for UI display + keep hours for compatibility
