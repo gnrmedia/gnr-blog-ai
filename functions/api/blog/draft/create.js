@@ -1,4 +1,5 @@
-import { requireAdmin, createDraftForLocation } from "../../blog-handlers.js";
+import { requireAdmin, createDraftForLocation } from "../_lib/blog-handlers.js";
+
 
 export async function onRequest(context) {
   const { request } = context;

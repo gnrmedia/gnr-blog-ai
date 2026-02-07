@@ -1,5 +1,6 @@
 // functions/api/blog/draft/generate-ai.js
-import { requireAdmin, generateAiForDraft } from "../../blog-handlers.js";
+import { requireAdmin, generateAiForDraft } from "../_lib/blog-handlers.js";
+
 
 // POST handler (Pages Functions expects method-specific exports)
 export async function onRequestPost(context) {
