@@ -1480,7 +1480,6 @@ if (passport.found && mpText && mpText.length >= 250) {
   }
 
   return jsonResponse(ctx, { ok: true, action: "generated", draft_id: draft.draft_id, location_id: draft.location_id, status: DRAFT_STATUS.AI_VISUALS_GENERATED });
-}
 
 // ============================================================
 // Remaining handler stubs (Phase 3+)
