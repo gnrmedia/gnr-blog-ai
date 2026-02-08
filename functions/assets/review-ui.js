@@ -452,8 +452,6 @@ function buildJs() {
     "        });",
     "      }",
     "",
-    "      }",
-    "",
     "      if(saveTopicsBtn){",
     "        saveTopicsBtn.addEventListener('click', async function(){",
     "          if(!isPending){ showToast('Link not active ('+status+')', 'error'); return; }",
