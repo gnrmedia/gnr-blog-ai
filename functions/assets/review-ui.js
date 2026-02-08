@@ -257,8 +257,8 @@ function buildJs() {
 "  }",
 "  // Public hook used after Save",
 "  window.__gnrReloadPublishedPreview = function(){ try{ return __gnrLoadPublishedPreview(); } catch(_){} };",
-""
-    "  async function boot(){",
+"",
+"  async function boot(){",
     "    try{",
     "      setStatus('LOADING', 'Validating link…');",
     "      if(elActionTitle) elActionTitle.textContent = 'Validating secure link…';",
