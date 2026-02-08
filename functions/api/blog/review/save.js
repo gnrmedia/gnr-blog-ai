@@ -53,6 +53,33 @@ const review = await db.prepare(`
 
 
   const finalMd = content_markdown.endsWith("\n") ? content_markdown : (content_markdown + "\n");
+  // ------------------------------------------------------------------
+  // Draft-canonical save: persist client edits by draft_id (token-independent)
+  // ------------------------------------------------------------------
+
+  const nextVersionRow = await db.prepare(`
+    SELECT COALESCE(MAX(version), 0) + 1 AS next_version
+    FROM blog_draft_versions
+    WHERE draft_id = ?
+  `).bind(review.draft_id).first();
+
+  const nextVersion = Number(nextVersionRow?.next_version || 1);
+
+  await db.prepare(`
+    INSERT INTO blog_draft_versions (
+      version_id,
+      draft_id,
+      version,
+      source,
+      content_markdown,
+      created_at
+    ) VALUES (?, ?, ?, 'client_edit', ?, datetime('now'))
+  `).bind(
+    crypto.randomUUID(),
+    review.draft_id,
+    nextVersion,
+    finalMd
+  ).run();
 
   await db.prepare(`
     UPDATE blog_draft_reviews
@@ -64,7 +91,14 @@ const review = await db.prepare(`
     WHERE review_id = ?
   `).bind(finalMd, follow_emphasis, follow_avoid, review.review_id).run();
 
-  return json({ ok: true, action: "saved", review_id: review.review_id }, 200);
+  return json({
+  ok: true,
+  action: "saved",
+  review_id: review.review_id,
+  draft_id: review.draft_id,
+  source: "client_edit"
+}, 200);
+
 }
 
 // ---------------- helpers ----------------
