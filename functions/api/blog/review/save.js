@@ -23,12 +23,13 @@ export async function onRequest(context) {
   const db = env.GNR_MEDIA_BUSINESS_DB;
   const hash = await tokenHash(t, env);
 
-  const review = await db.prepare(`
-    SELECT review_id, location_id, status, expires_at
-    FROM blog_draft_reviews
-    WHERE token_hash = ?
-    LIMIT 1
-  `).bind(hash).first();
+const review = await db.prepare(`
+  SELECT review_id, draft_id, location_id, status, expires_at
+  FROM blog_draft_reviews
+  WHERE token_hash = ?
+  LIMIT 1
+`).bind(hash).first();
+
 
   if (!review) return json({ ok: false, error: "Invalid token" }, 404);
 
