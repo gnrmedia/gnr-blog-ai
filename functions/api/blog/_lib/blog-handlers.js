@@ -502,7 +502,7 @@ async function cloudflareImagesUploadBase64({ env, b64, fileNameHint }) {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
       const form = new FormData();
       form.append("file", new Blob([bytes], { type: "image/png" }), String(fileNameHint || "visual.png"));
-      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/images/v1`;
+      const url = "https://api.cloudflare.com/client/v4/accounts/" + accountId + "/images/v1";
       const res = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token }, body: form });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || !out?.success) {
