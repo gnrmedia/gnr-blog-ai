@@ -445,7 +445,7 @@ const generateMarkdownWithAI = async ({ env, prompt, system }) => {
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
               const errMsg = data?.error?.message || r.statusText;
-              throw new Error(`OpenAI error: ${errMsg}`);
+              throw new Error("OpenAI error: " + errMsg);
       }
       const text = data?.choices?.[0]?.message?.content || "";
       if (!text) throw new Error("OpenAI returned no message content.");
@@ -503,7 +503,7 @@ async function cloudflareImagesUploadBase64({ env, b64, fileNameHint }) {
       const form = new FormData();
       form.append("file", new Blob([bytes], { type: "image/png" }), String(fileNameHint || "visual.png"));
       const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/images/v1`;
-      const res = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+      const res = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token }, body: form });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || !out?.success) {
               throw new Error(`Cloudflare Images upload failed: ${res.status} ${JSON.stringify(out).slice(0, 600)}`);
