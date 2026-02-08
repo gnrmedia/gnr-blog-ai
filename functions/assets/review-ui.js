@@ -271,7 +271,7 @@ function buildJs() {
 "            'border-radius:12px;' +",
 "            'width:100%;max-width:none !important;box-sizing:border-box;' +",
 "            'margin:0 !important;' +",
-"            'padding:10px 6px 12px;' +",
+"            'padding:0px 0px 0px;' +",
 "            'color:#111 !important;' +",
 "          '}' +",
 "          '.phoneScreen .gnr-render-root *{color:inherit;}' +",
