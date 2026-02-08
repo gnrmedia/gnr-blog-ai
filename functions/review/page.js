@@ -25,45 +25,7 @@ export async function onRequest(context) {
   // We rely on /api/blog/review/debug to validate and return status.
   // The JS will call debug immediately and render state appropriately.
 
-  // Preload draft markdown so Edit Mode opens with the existing draft (legacy behavior).
-let draftMarkdown = "";
-try {
-  // 1) Validate token + get draft_id
-  const dbgUrl = new URL("/api/blog/review/debug", url.origin);
-  dbgUrl.searchParams.set("t", t);
-
-  const dbgRes = await fetch(dbgUrl.toString(), {
-    method: "GET",
-    headers: { "Cache-Control": "no-cache" },
-  });
-
-  if (dbgRes.ok) {
-    const dbgJson = await dbgRes.json().catch(() => ({}));
-
-    const draftId =
-      String(dbgJson?.draft_id || dbgJson?.draft?.draft_id || dbgJson?.row?.draft_id || "").trim();
-
-    // 2) Load draft markdown (same as Admin UI does)
-    if (draftId) {
-      const dUrl = new URL("/api/blog/draft/get/" + encodeURIComponent(draftId), url.origin);
-      const dRes = await fetch(dUrl.toString(), {
-        method: "GET",
-        headers: { "Cache-Control": "no-cache" },
-      });
-
-      if (dRes.ok) {
-        const dJson = await dRes.json().catch(() => ({}));
-        const md = dJson?.draft?.content_markdown || "";
-        draftMarkdown = String(md || "");
-      }
-    }
-  }
-} catch (_) {
-  draftMarkdown = "";
-}
-
-const page = buildWowReviewHtml({ token: t, draftMarkdown });
-
+const page = buildWowReviewHtml({ token: t, draftMarkdown: "" });
 
   return html(page, 200);
 }
