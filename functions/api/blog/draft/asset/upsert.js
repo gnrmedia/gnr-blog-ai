@@ -87,13 +87,13 @@ return new Response(JSON.stringify({ ok: true, build: BUILD_FINGERPRINT, result 
   } catch (err) {
     return new Response(
       JSON.stringify(
-       {
-  ok: false,
-  build: BUILD_FINGERPRINT,
-  error: "asset upsert failed",
-  detail: String(err?.message || err),
-  debug: {
-
+        {
+          ok: false,
+          error: "asset upsert failed",
+          detail: String(err?.message || err),
+          name: String(err?.name || ""),
+          stack: String(err?.stack || ""),
+          debug: {
             draft_id: draftid,
             key,
             image_url_len: image_url.length,
