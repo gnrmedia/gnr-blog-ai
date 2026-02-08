@@ -1482,8 +1482,41 @@ if (passport.found && mpText && mpText.length >= 250) {
 // ============================================================
 
 // ---------- Core admin actions ----------
-export async function runNowForLocation(_ctx, locationid) {
-      // TODO: implement
+// ============================================================
+// RUN NOW (manual trigger)
+// Creates a new draft for a location, generates AI (text + visuals),
+// and returns draft_id + hero_url (from blog_draft_assets).
+// ============================================================
+export async function runNowForLocation(ctx, locationid) {
+  const { env } = ctx;
+
+  const loc = normaliseLocationId(locationid);
+  if (!loc) return errorResponse(ctx, "location_id required", 400);
+
+  // 1) Create draft
+  const created = await createDraftForLocation(ctx, loc);
+  if (created instanceof Response) return created;
+
+  const draft_id = String(created?.draft_id || "").trim();
+  if (!draft_id) {
+    return errorResponse(ctx, "run_now_failed_create_draft", 500, { created });
+  }
+
+  // 2) Generate AI for the draft (this path already persists visuals via D1 upserts)
+  const gen = await generateAiForDraft(ctx, draft_id, { force: false, override_prompt: null });
+  if (gen instanceof Response) return gen;
+
+  // 3) Read back hero_url from saved assets (D1) so UI can display it
+  const assets = await getDraftAssetsMap(env, draft_id);
+  const hero_url = String(assets?.hero || "").trim() || null;
+
+  return jsonResponse(ctx, {
+    ok: true,
+    action: "run_now_completed",
+    location_id: loc,
+    draft_id,
+    hero_url,
+  });
 }
 
 export async function listDraftsForLocation(ctx, locationid, limit = 20) {
