@@ -402,11 +402,11 @@ async function upsertDraftAssetRow(env, { draft_id, visual_key, image_url, provi
                                     provider = excluded.provider, prompt = excluded.prompt,
                                           image_url = excluded.image_url, status = excluded.status,
                                                 updated_at = datetime('now')
-                                                  `).bind(
-              asset_id, did, k,
-              String(asset_type || "image"), String(provider || "admin"),
-              prompt ? String(prompt) : null, url, String(status || "ready")
-            ).run();
+).bind(
+  asset_id, did, k,
+  String(asset_type || "image"), String(provider || "admin"),
+  String(prompt || "manual_upload"), url, String(status || "ready")
+).run();
       return { ok: true, asset_id };
 }
 
