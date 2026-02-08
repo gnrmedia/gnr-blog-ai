@@ -15,7 +15,10 @@ export async function onRequest(context) {
 
   const draftid = String(body.draft_id || "").trim();
   const key = String(body.key || "").trim();
-  const asset_data = (body && typeof body.asset_data === "object" && body.asset_data) ? body.asset_data : {};
+  const asset_data =
+    body && typeof body.asset_data === "object" && body.asset_data
+      ? body.asset_data
+      : {};
 
   if (!draftid || !key) {
     return new Response(JSON.stringify({ ok: false, error: "draft_id and key required" }), {
@@ -24,23 +27,50 @@ export async function onRequest(context) {
     });
   }
 
-  // ✅ HARD VALIDATION so we never throw deep in blog-handlers
+  // ✅ Validate required field early so we don't throw deeper
   const image_url = String(asset_data.image_url || "").trim();
   const isHttpUrl = /^https?:\/\//i.test(image_url);
   const isDataImage = /^data:image\//i.test(image_url);
 
   if (!image_url || (!isHttpUrl && !isDataImage)) {
-    return new Response(JSON.stringify({
-      ok: false,
-      error: "asset_data.image_url required (https://... or data:image/*)",
-      received: {
-        has_asset_data: !!body.asset_data,
-        asset_data_keys: Object.keys(asset_data || {}),
+    return new Response(
+      JSON.stringify(
+        {
+          ok: false,
+          error: "asset_data.image_url required (https://... or data:image/*)",
+          received: {
+            has_asset_data: !!body.asset_data,
+            asset_data_keys: Object.keys(asset_data || {}),
+          },
+        },
+        null,
+        2
+      ),
+      {
+        status: 400,
+        headers: { "content-type": "application/json; charset=utf-8" },
       }
-    }, null, 2), {
-      status: 400,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
+    );
+  }
+
+  // ✅ Optional safety: avoid trying to store multi-megabyte data URLs in D1
+  // (tune this number as you like)
+  if (isDataImage && image_url.length > 250_000) {
+    return new Response(
+      JSON.stringify(
+        {
+          ok: false,
+          error: "data:image payload too large for safe storage. Use a public https:// URL instead.",
+          received: { image_url_len: image_url.length },
+        },
+        null,
+        2
+      ),
+      {
+        status: 413,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }
+    );
   }
 
   try {
@@ -52,14 +82,28 @@ export async function onRequest(context) {
       headers: { "content-type": "application/json; charset=utf-8" },
     });
   } catch (err) {
-    // ✅ Never let Cloudflare generate text/html 500 pages
-    return new Response(JSON.stringify({
-      ok: false,
-      error: "asset upsert failed",
-      detail: String(err?.message || err),
-    }, null, 2), {
-      status: 500,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
+    return new Response(
+      JSON.stringify(
+        {
+          ok: false,
+          error: "asset upsert failed",
+          detail: String(err?.message || err),
+          debug: {
+            draft_id: draftid,
+            key,
+            image_url_len: image_url.length,
+            is_data_image: isDataImage,
+            is_http_url: isHttpUrl,
+          },
+        },
+        null,
+        2
+      ),
+      {
+        status: 500,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }
+    );
   }
 }
+
