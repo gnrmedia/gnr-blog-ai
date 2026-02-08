@@ -433,7 +433,7 @@ const generateMarkdownWithAI = async ({ env, prompt, system }) => {
       const model = env.OPENAI_MODEL || "gpt-4o-mini";
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
               method: "POST",
-              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
               body: JSON.stringify({
                         model, temperature: 0.6,
                         messages: [
