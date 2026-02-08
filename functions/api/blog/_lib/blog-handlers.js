@@ -929,20 +929,26 @@ export async function renderDraftHtml(ctx, draftid, token = "") {
       if (!row) return new Response("<h1>Draft not found</h1>", { status: 404, headers: { "content-type": "text/html" } });
 
    // OPTION B: if token (t=) is present and matches this draft, prefer client_content_markdown.
-  let chosenMarkdown = String(row.content_markdown || "");
+let chosenMarkdown = String(row.content_markdown || "");
 
-  const t = String(token || "").trim();
-  if (t) {
-    try {
-      const { error, row: reviewRow } = await getReviewRowByToken(ctx, t);
-      if (!error && reviewRow && String(reviewRow.draft_id || "").trim() === draft_id) {
-        const clientMd = String(reviewRow.client_content_markdown || "");
-        if (clientMd.trim()) chosenMarkdown = clientMd;
-      }
-    } catch (e) {
-      console.log("RENDER_TOKEN_OVERRIDE_FAIL_OPEN", { draft_id, error: String(e?.message || e) });
-    }
+// Prefer latest client_edit version (draft-scoped)
+try {
+  const v = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT content_markdown
+      FROM blog_draft_versions
+     WHERE draft_id = ?
+       AND source = 'client_edit'
+     ORDER BY datetime(created_at) DESC
+     LIMIT 1
+  `).bind(draft_id).first();
+
+  if (v && String(v.content_markdown || "").trim()) {
+    chosenMarkdown = String(v.content_markdown);
   }
+} catch (e) {
+  console.log("CLIENT_EDIT_VERSION_LOAD_FAIL_OPEN", { draft_id, error: String(e?.message || e) });
+}
+
 
   const md = visualCommentsToTokens(stripInternalTelemetryComments(chosenMarkdown));
 
@@ -965,6 +971,15 @@ export async function renderDraftHtml(ctx, draftid, token = "") {
       });
 
   const title = escapeHtml(String(row.title || "Draft article").trim());
+
+  const statusLabel =
+  String(row.status || "").toLowerCase() === "published"
+    ? "Published article"
+    : String(row.status || "").toLowerCase() === "approved"
+      ? "Approved (not yet published)"
+      : "Preview (not published)";
+
+
       const full = `<!doctype html>
       <html><head>
       <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -989,7 +1004,7 @@ export async function renderDraftHtml(ctx, draftid, token = "") {
       @media(max-width:720px){.gnr-head{padding:24px 18px 6px}.gnr-body{padding:8px 18px 22px}.gnr-head h1{font-size:34px}.gnr-body p{font-size:16px}.gnr-body h2{font-size:24px}}
       </style></head><body>
       <div class="gnr-wrap"><article class="gnr-article">
-      <header class="gnr-head"><h1>${title}</h1><p class="gnr-sub">Generic Published View A</p></header>
+      <header class="gnr-head"><h1>${title}</h1><p class="gnr-sub">${escapeHtml(statusLabel)}</p></header>
       <div class="gnr-body">${bodyHtml}</div>
       </article></div></body></html>`;
       return new Response(full.trim(), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
@@ -1720,10 +1735,25 @@ const draft = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
   const safe = { ...row };
   delete safe.token_hash;
 
-      const draft_markdown =
-  String(row.client_content_markdown || "").trim()
-    ? String(row.client_content_markdown)
-    : String(draft?.content_markdown || "");
+let draft_markdown = String(draft?.content_markdown || "");
+
+try {
+  const v = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT content_markdown
+      FROM blog_draft_versions
+     WHERE draft_id = ?
+       AND source = 'client_edit'
+     ORDER BY datetime(created_at) DESC
+     LIMIT 1
+  `).bind(String(draft.draft_id)).first();
+
+  if (v && String(v.content_markdown || "").trim()) {
+    draft_markdown = String(v.content_markdown);
+  }
+} catch (e) {
+  console.log("DEBUG_CLIENT_EDIT_VERSION_FAIL_OPEN", { draft_id: draft.draft_id });
+}
+
 
 return jsonResponse(ctx, {
   ok: true,
