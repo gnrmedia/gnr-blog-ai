@@ -21,8 +21,16 @@ export async function onRequest(context) {
   const result = await runAutoCadence(context, limit);
   if (result instanceof Response) return result;
 
-  return new Response(JSON.stringify({ ok: true, ...result }, null, 2), {
+  return new Response(JSON.stringify({
+    ok: true,
+    ...result,
+    ui_hints: {
+      do_not_navigate: true,
+      message: "Run completed. Stay on Admin page; open review links manually if needed."
+    }
+  }, null, 2), {
     status: 200,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
+
 }
