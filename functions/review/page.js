@@ -645,6 +645,16 @@ function buildWowReviewHtml({ token }) {
     .ghost{
       background: rgba(0,0,0,.25);
     }
+/* FIX: Hover contrast for "Enter edit mode" button */
+#editToggleBtn{
+  color: rgba(11,15,26,.92);
+}
+
+#editToggleBtn:hover{
+  color: rgba(11,15,26,.92);
+  background: rgba(0,0,0,.08);
+  border-color: rgba(0,0,0,.18);
+}
 
     /* Toast */
     .toast{
