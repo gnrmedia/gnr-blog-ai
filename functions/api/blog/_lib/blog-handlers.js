@@ -381,6 +381,38 @@ async function hasHeroAsset(env, draft_id) {
               console.log("HAS_HERO_ASSET_FAIL_OPEN", { draft_id, error: String(e?.message || e) });
               return false;
       }
+      async function hasRealHeroAsset(env, draft_id) {
+      try {
+              const did = String(draft_id || "").trim();
+              if (!did) return false;
+
+              const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+                    SELECT asset_type, provider, image_url
+                      FROM blog_draft_assets
+                     WHERE draft_id = ?
+                       AND lower(visual_key) = 'hero'
+                       AND image_url IS NOT NULL AND TRIM(image_url) <> ''
+                     LIMIT 1
+              `).bind(did).first();
+
+              if (!row) return false;
+
+              const heroUrl = String(row.image_url || "").trim();
+              const heroType = String(row.asset_type || "").trim().toLowerCase();
+              const heroProvider = String(row.provider || "").trim().toLowerCase();
+
+              const isFallbackSvg =
+                    heroType === "svg" ||
+                    heroProvider === "system" ||
+                    /^data:image\/svg\+xml/i.test(heroUrl);
+
+              return !isFallbackSvg;
+      } catch (e) {
+              console.log("HAS_REAL_HERO_ASSET_FAIL_OPEN", { draft_id, error: String(e?.message || e) });
+              return false;
+      }
+}
+
 }
 
 async function upsertDraftAssetRow(env, { draft_id, visual_key, image_url, provider, asset_type, prompt, status }) {
@@ -1073,7 +1105,7 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
 
   // Idempotency check
   if (!force && draft.content_markdown && String(draft.content_markdown).includes("<!-- AI_GENERATED -->")) {
-          const heroExists = await hasHeroAsset(env, draft.draft_id);
+          const heroExists = await hasRealHeroAsset(env, draft.draft_id);
           if (!heroExists) {
   // Auto-generate visuals (fail-open)
   // Cost rule:
@@ -1314,7 +1346,11 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
   }
 
   // Auto-generate visuals (fail-open)
-  try { await autoGenerateVisualsForDraft(env, draft.draft_id); } catch (e) {
+    // Auto-generate visuals (fail-open)
+  // Cost rule: force=true => TEXT ONLY (skip images)
+  try {
+          if (!force) await autoGenerateVisualsForDraft(env, draft.draft_id);
+  } catch (e) {
           console.log("AUTO_VISUALS_FAIL_SYNC", { draft_id: draft.draft_id, error: String(e?.message || e) });
   }
 
