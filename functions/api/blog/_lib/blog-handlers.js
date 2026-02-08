@@ -238,7 +238,84 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
     confidence: 0,
   };
 
-  // ...rest of your resolver function here...
+
+// ---------- 1) GHL Media Library (PRIMARY) ----------
+  try {
+    if (env.GHL_GNR_API_KEY && location_id) {
+      const ghlKey = typeof env.GHL_GNR_API_KEY.get === "function"
+        ? await env.GHL_GNR_API_KEY.get()
+        : env.GHL_GNR_API_KEY;
+
+      const res = await fetch(
+        `https://services.leadconnectorhq.com/locations/${location_id}/media`,
+        {
+          headers: {
+            Authorization: `Bearer ${ghlKey}`,
+            Version: "2021-07-28",
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const items = Array.isArray(data?.media) ? data.media : [];
+
+        const abnNorm = norm(abn);
+        const nameNorm = norm(businessName);
+
+        const match = items.find((m) => {
+          const n = norm(m?.name || "");
+          return (
+            (abnNorm && n.includes(abnNorm)) ||
+            (nameNorm && n.includes(nameNorm))
+          );
+        });
+
+        if (match?.url) {
+          return {
+            found: true,
+            source: "ghl_media",
+            url: match.url,
+            match_basis: abnNorm ? "abn" : "business_name",
+            confidence: 0.95,
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.log("PASSPORT_GHL_LOOKUP_FAIL_OPEN", String(e?.message || e));
+  }
+
+  // ---------- 2) gnrmedia.global index (SECONDARY) ----------
+  try {
+    const idxUrl = "https://gnrmedia.global/marketing_passports/index.json";
+    const res = await fetch(idxUrl, { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const rows = await res.json();
+      const abnNorm = norm(abn);
+      const nameNorm = norm(businessName);
+
+      const hit = Array.isArray(rows)
+        ? rows.find((r) =>
+            norm(r.abn || "").includes(abnNorm) ||
+            norm(r.business_name || "").includes(nameNorm)
+          )
+        : null;
+
+      if (hit?.pdf_url) {
+        return {
+          found: true,
+          source: "gnrmedia_index",
+          url: hit.pdf_url,
+          match_basis: hit.abn ? "abn" : "business_name",
+          confidence: 0.85,
+        };
+      }
+    }
+  } catch (e) {
+    console.log("PASSPORT_INDEX_LOOKUP_FAIL_OPEN", String(e?.message || e));
+  }
 
   return result;
 }
@@ -967,7 +1044,7 @@ export async function createDraftForLocation(ctx, locationid) {
 const biz = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
       SELECT business_name_raw, abn, website_url, blog_url
           FROM businesses WHERE location_id LIKE ? AND length(location_id) = ? LIMIT 1
-            `).bind(String(draft.location_id || ""), String(draft.location_id || "").length).first();
+            `).bind(String(inputNorm || ""), String(inputNorm || "").length).first();
 
       const businessName = biz?.business_name_raw || inputNorm;
       const title = `Draft article for ${businessName}`;
@@ -1163,7 +1240,7 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
 
   // Business context
   const biz = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-      SELECT business_name_raw, marketing_passport_url, website_url, blog_url
+      SELECT business_name_raw, abn, website_url, blog_url
           FROM businesses WHERE location_id LIKE ? AND length(location_id) = ? LIMIT 1
             `).bind(String(draft.location_id || ""), String(draft.location_id || "").length).first();
       const businessName = biz?.business_name_raw || "this business";
@@ -1198,88 +1275,6 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
           String(latestGuidance.client_topic_suggestions || "").trim() ? `Future topics/direction: ${String(latestGuidance.client_topic_suggestions).trim()}` : "",
           "", "Hard rules:", "- Follow 'Avoid' strictly.", "- Use 'Emphasise' to shape tone/angle/examples.", "",
         ].filter(Boolean).join("\n") : "";
-
-
-  // ---------- 1) GHL Media Library (PRIMARY) ----------
-  try {
-    if (env.GHL_GNR_API_KEY && location_id) {
-      const ghlKey = typeof env.GHL_GNR_API_KEY.get === "function"
-        ? await env.GHL_GNR_API_KEY.get()
-        : env.GHL_GNR_API_KEY;
-
-      const res = await fetch(
-        `https://services.leadconnectorhq.com/locations/${location_id}/media`,
-        {
-          headers: {
-            Authorization: `Bearer ${ghlKey}`,
-            Version: "2021-07-28",
-            Accept: "application/json",
-          },
-        }
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        const items = Array.isArray(data?.media) ? data.media : [];
-
-        const abnNorm = norm(abn);
-        const nameNorm = norm(businessName);
-
-        const match = items.find((m) => {
-          const n = norm(m?.name || "");
-          return (
-            (abnNorm && n.includes(abnNorm)) ||
-            (nameNorm && n.includes(nameNorm))
-          );
-        });
-
-        if (match?.url) {
-          return {
-            found: true,
-            source: "ghl_media",
-            url: match.url,
-            match_basis: abnNorm ? "abn" : "business_name",
-            confidence: 0.95,
-          };
-        }
-      }
-    }
-  } catch (e) {
-    console.log("PASSPORT_GHL_LOOKUP_FAIL_OPEN", String(e?.message || e));
-  }
-
-  // ---------- 2) gnrmedia.global index (SECONDARY) ----------
-  try {
-    const idxUrl = "https://gnrmedia.global/marketing_passports/index.json";
-    const res = await fetch(idxUrl, { headers: { Accept: "application/json" } });
-    if (res.ok) {
-      const rows = await res.json();
-      const abnNorm = norm(abn);
-      const nameNorm = norm(businessName);
-
-      const hit = Array.isArray(rows)
-        ? rows.find((r) =>
-            norm(r.abn || "").includes(abnNorm) ||
-            norm(r.business_name || "").includes(nameNorm)
-          )
-        : null;
-
-      if (hit?.pdf_url) {
-        return {
-          found: true,
-          source: "gnrmedia_index",
-          url: hit.pdf_url,
-          match_basis: hit.abn ? "abn" : "business_name",
-          confidence: 0.85,
-        };
-      }
-    }
-  } catch (e) {
-    console.log("PASSPORT_INDEX_LOOKUP_FAIL_OPEN", String(e?.message || e));
-  }
-
-  return result;
-}
 
 
   // Context quality + fetched excerpts
