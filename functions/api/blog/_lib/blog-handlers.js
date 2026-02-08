@@ -1672,24 +1672,34 @@ export async function getReviewDebug(ctx, token) {
   const { error, row } = await getReviewRowByToken(ctx, token);
   if (error) return error;
 
-  const draft = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-    SELECT draft_id, location_id, status, title, approved_at, updated_at, created_at
-      FROM blog_drafts
-     WHERE draft_id = ?
-     LIMIT 1
-  `).bind(String(row.draft_id || "")).first();
+const draft = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+  SELECT draft_id, location_id, status, title,
+         content_markdown,
+         approved_at, updated_at, created_at
+    FROM blog_drafts
+   WHERE draft_id = ?
+   LIMIT 1
+`).bind(String(row.draft_id || "")).first();
+
 
   // redact token_hash
   const safe = { ...row };
   delete safe.token_hash;
 
-  return jsonResponse(ctx, {
-    ok: true,
-    review: safe,
-    draft: draft || null,
-    draft_id: safe.draft_id || draft?.draft_id || null,
-    status: draft?.status || safe.status || null,
-  });
+      const draft_markdown =
+  String(row.client_content_markdown || "").trim()
+    ? String(row.client_content_markdown)
+    : String(draft?.content_markdown || "");
+
+return jsonResponse(ctx, {
+  ok: true,
+  review: safe,
+  draft: draft || null,
+  draft_id: safe.draft_id || draft?.draft_id || null,
+  status: draft?.status || safe.status || null,
+  draft_markdown, // <-- NEW: token-authorized markdown for editor prefill
+});
+
 
 }
 
