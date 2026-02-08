@@ -1,4 +1,6 @@
 import { upsertDraftAsset } from "../../_lib/blog-handlers.js";
+// BUILD FINGERPRINT (debug) — bump this string each deploy to prove which build is live.
+const BUILD_FINGERPRINT = "asset-upsert@2026-02-08T20:55-AEST";
 
 export async function onRequest(context) {
   const { request } = context;
@@ -77,18 +79,21 @@ export async function onRequest(context) {
     const result = await upsertDraftAsset(context, draftid, key, asset_data);
     if (result instanceof Response) return result;
 
-    return new Response(JSON.stringify({ ok: true, result }, null, 2), {
-      status: 200,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
+return new Response(JSON.stringify({ ok: true, build: BUILD_FINGERPRINT, result }, null, 2), {
+  status: 200,
+  headers: { "content-type": "application/json; charset=utf-8" },
+});
+
   } catch (err) {
     return new Response(
       JSON.stringify(
-        {
-          ok: false,
-          error: "asset upsert failed",
-          detail: String(err?.message || err),
-          debug: {
+       {
+  ok: false,
+  build: BUILD_FINGERPRINT,
+  error: "asset upsert failed",
+  detail: String(err?.message || err),
+  debug: {
+
             draft_id: draftid,
             key,
             image_url_len: image_url.length,
