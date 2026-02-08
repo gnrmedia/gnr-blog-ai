@@ -903,7 +903,7 @@ export async function getDraftById(ctx, draftid) {
       return jsonResponse(ctx, { ok: true, draft: row });
 }
 
-export async function renderDraftHtml(ctx, draftid) {
+export async function renderDraftHtml(ctx, draftid, token = "") {
       const { env } = ctx;
       const draft_id = String(draftid || "").trim();
       if (!draft_id) return errorResponse(ctx, "draft_id required", 400);
@@ -913,7 +913,24 @@ export async function renderDraftHtml(ctx, draftid) {
                 `).bind(draft_id).first();
       if (!row) return new Response("<h1>Draft not found</h1>", { status: 404, headers: { "content-type": "text/html" } });
 
-  const md = visualCommentsToTokens(stripInternalTelemetryComments(String(row.content_markdown || "")));
+   // OPTION B: if token (t=) is present and matches this draft, prefer client_content_markdown.
+  let chosenMarkdown = String(row.content_markdown || "");
+
+  const t = String(token || "").trim();
+  if (t) {
+    try {
+      const { error, row: reviewRow } = await getReviewRowByToken(ctx, t);
+      if (!error && reviewRow && String(reviewRow.draft_id || "").trim() === draft_id) {
+        const clientMd = String(reviewRow.client_content_markdown || "");
+        if (clientMd.trim()) chosenMarkdown = clientMd;
+      }
+    } catch (e) {
+      console.log("RENDER_TOKEN_OVERRIDE_FAIL_OPEN", { draft_id, error: String(e?.message || e) });
+    }
+  }
+
+  const md = visualCommentsToTokens(stripInternalTelemetryComments(chosenMarkdown));
+
       let bodyHtml = "";
       try { bodyHtml = markdownToHtml(md); } catch (e) {
               bodyHtml = `<pre style="white-space:pre-wrap;">${escapeHtml(md)}</pre>`;
