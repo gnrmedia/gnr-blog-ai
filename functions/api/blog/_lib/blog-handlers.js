@@ -555,7 +555,7 @@ const svgToDataUrl = (svg) => {
 
 function buildAbstractPanelSvg() {
       const gridLines = Array.from({ length: 18 }).map((_, i) =>
-              `<line x1="${i * 100}" y1="0" x2="${i * 100}" y2="900" stroke="#fff"/>`).join("");
+              '<line x1="' + (i * 100) + '" y1="0" x2="' + (i * 100) + '" y2="900" stroke="#fff"/>`).join("");
       const gridRows = Array.from({ length: 10 }).map((_, i) =>
               `<line x1="0" y1="${i * 100}" x2="1600" y2="${i * 100}" stroke="#fff"/>`).join("");
       return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
