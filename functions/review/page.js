@@ -919,10 +919,11 @@ function buildWowReviewHtml({ token }) {
                       <div class="small" style="margin-top:6px">Max 2 MB. The image fills the URL field automatically.</div>
                     </div>
 
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
-                      <button id="clientSaveVisualBtn" class="primary" type="button">Save image</button>
-                      <button id="clientPreviewVisualBtn" class="ghost" type="button">Preview</button>
-                    </div>
+<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
+  <button id="clientPreviewVisualBtn" class="ghost" type="button">Preview</button>
+  <button id="clientSaveVisualBtn" class="primary" type="button" disabled>Save image</button>
+</div>
+
 
                     <div style="margin-top:12px;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:10px;background:rgba(0,0,0,.03);">
                       <img id="clientImagePreview" alt="Preview" style="display:none; max-width:100%; height:auto; border-radius:14px; border:1px solid rgba(255,255,255,.10);" />
