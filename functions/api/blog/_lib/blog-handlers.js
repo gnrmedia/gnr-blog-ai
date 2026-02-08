@@ -478,7 +478,7 @@ async function openaiGenerateImageBase64({ env, prompt, size }) {
 
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
