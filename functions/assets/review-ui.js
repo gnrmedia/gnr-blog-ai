@@ -415,6 +415,18 @@ function buildJs() {
     "        });",
     "      }",
     "",
+
+    "      // Enable Save image ONLY when an image URL exists (Admin parity)",
+"      if(clientImageUrl && clientSaveVisualBtn){",
+"        // Initial state on load",
+"        clientSaveVisualBtn.disabled = !String(clientImageUrl.value || '').trim();",
+"",
+"        clientImageUrl.addEventListener('input', function(){",
+"          var hasUrl = String(clientImageUrl.value || '').trim().length > 0;",
+"          clientSaveVisualBtn.disabled = !hasUrl;",
+"        });",
+"      }",
+
     "      if(clientPreviewVisualBtn){",
     "        clientPreviewVisualBtn.addEventListener('click', function(e){",
     "          try{ e.preventDefault(); }catch(_){}",
