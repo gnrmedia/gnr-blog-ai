@@ -1,4 +1,4 @@
-import { requireAdmin, upsertDraftAsset } from "../../_lib/blog-handlers.js";
+import { upsertDraftAsset } from "../../_lib/blog-handlers.js";
 
 export async function onRequest(context) {
   const { request } = context;
@@ -9,9 +9,6 @@ export async function onRequest(context) {
       headers: { "content-type": "application/json; charset=utf-8" },
     });
   }
-
-  const admin = requireAdmin(context);
-  if (admin instanceof Response) return admin;
 
   let body = {};
   try { body = await request.json(); } catch (_) {}
@@ -34,3 +31,4 @@ export async function onRequest(context) {
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
+
