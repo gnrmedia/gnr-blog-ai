@@ -483,7 +483,7 @@ async function openaiGenerateImageBase64({ env, prompt, size }) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(`OpenAI image error: ${data?.error?.message || res.statusText}`);
+    throw new Error("OpenAI image error: " + (data?.error?.message || res.statusText));
   }
   const first = data?.data?.[0] || {};
   const b64 = first?.b64_json ? String(first.b64_json).trim() : null;
@@ -506,13 +506,13 @@ async function cloudflareImagesUploadBase64({ env, b64, fileNameHint }) {
       const res = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token }, body: form });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || !out?.success) {
-              throw new Error(`Cloudflare Images upload failed: ${res.status} ${JSON.stringify(out).slice(0, 600)}`);
+              throw new Error("Cloudflare Images upload failed: " + res.status + " " + JSON.stringify(out).slice(0, 600));
       }
       const id = out?.result?.id;
       if (!id) throw new Error("Cloudflare Images: missing result.id");
       const hash = String(env.CF_IMAGES_DELIVERY_HASH || "").trim();
       if (!hash) throw new Error("Missing CF_IMAGES_DELIVERY_HASH");
-      return `https://imagedelivery.net/${hash}/${id}/public`;
+      return "https://imagedelivery.net/" + hash + "/" + id + "/public";
 }
 
 async function generateAndStoreImage({ env, prompt, size, fileNameHint }) {
@@ -543,7 +543,7 @@ async function logAiEventFailOpen(env, { kind, model, draft_id, detail }) {
 // ============================================================
 const svgToDataUrl = (svg) => {
       const b64 = btoa(unescape(encodeURIComponent(String(svg || "").trim())));
-      return `data:image/svg+xml;base64,${b64}`;
+      return "data:image/svg+xml;base64," + b64;
 };
 
 function buildAbstractPanelSvg() {
@@ -604,7 +604,7 @@ async function autoGenerateVisualsForDraft(env, draft_id) {
                         `Theme: ${title}`,
                         `Concept cues: ${subtitle}`,
                       ].join("\n");
-              const gen = await generateAndStoreImage({ env, prompt: heroPrompt, size: "1536x1024", fileNameHint: `hero-${did}.png` });
+              const gen = await generateAndStoreImage({ env, prompt: heroPrompt, size: "1536x1024", fileNameHint: "hero-" + did + ".png" });
               const heroImageUrl = gen?.url ? String(gen.url).trim() : "";
               await upsertDraftAssetRow(env, {
                         draft_id: did, visual_key: "hero",
