@@ -526,13 +526,20 @@ async function generateAndStoreImage({ env, prompt, size, fileNameHint }) {
 // ============================================================
 async function logAiEventFailOpen(env, { kind, model, draft_id, detail }) {
       try {
-              await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-                    INSERT INTO ai_events (id, created_at, kind, model, draft_id, detail_json)
-                          VALUES (?, datetime('now'), ?, ?, ?, ?)
-                              `).bind(
-                        crypto.randomUUID(), String(kind || ""), String(model || ""),
-                        draft_id ? String(draft_id) : null, JSON.stringify(detail || {})
-                      ).run();
+await env.GNR_MEDIA_BUSINESS_DB
+  .prepare(
+    "INSERT INTO ai_events (id, created_at, kind, model, draft_id, detail_json) " +
+    "VALUES (?, datetime('now'), ?, ?, ?, ?)"
+  )
+  .bind(
+    crypto.randomUUID(),
+    String(kind || ""),
+    String(model || ""),
+    draft_id ? String(draft_id) : null,
+    JSON.stringify(detail || {})
+  )
+  .run();
+
       } catch (e) {
               console.log("AI_EVENT_LOG_FAIL_OPEN", String(e?.message || e));
       }
