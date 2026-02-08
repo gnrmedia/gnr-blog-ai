@@ -996,7 +996,20 @@ try {
       .gnr-body{padding:10px 34px 34px}.gnr-body h2{font-family:"Playfair Display",Georgia,serif;font-size:28px;letter-spacing:-0.01em;margin:28px 0 10px}
       .gnr-body h3{font-size:18px;margin:20px 0 8px}.gnr-body p{margin:10px 0;font-size:17px}
       .gnr-body blockquote{margin:18px 0;padding:14px 16px;border-left:4px solid #111;background:#fafafa;border-radius:12px;color:#222}
-      .gnr-body ul{margin:12px 0 12px 20px}
+            .gnr-body ul,
+      .gnr-body ol{
+        margin:12px 0 12px 22px;
+        padding-left: 18px;
+      }
+      .gnr-body li{
+        margin: 6px 0;
+      }
+      /* snarkdown wraps list items in <p>; remove extra paragraph spacing so bullets look tight */
+      .gnr-body li p{
+        margin: 0;
+        display: inline;
+      }
+
       .gnr-visual{margin:22px 0;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(180deg,#fff,#fbfbfb);overflow:hidden}
       .gnr-img{width:100%;height:auto;display:block}
       .gnr-visual-inner{padding:18px 18px 16px}.gnr-visual-label{font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#111;margin-bottom:6px}
@@ -1208,7 +1221,12 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
       5) 4\u20136 sections with H2 headings
       6) At least 3 "Amazement Moments"
       7) One practical checklist
-      8) 3\u20135 FAQ questions
+         - MUST be an UNORDERED list using "-" bullets only (never "1." "2." numbering)
+         - Each bullet must include its explanation within the SAME bullet (no separate paragraph under it)
+         - If a bullet wraps onto a new line, indent continuation lines by 2 spaces
+         - No blank lines between bullets
+      8) 3–5 FAQ questions
+
       9) Short premium CTA at the end
       10) Keep it evergreen
       11) Length: ~900\u20131200 words
