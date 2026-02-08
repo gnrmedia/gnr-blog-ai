@@ -41,9 +41,15 @@ export async function onRequest(context) {
     return json({ ok: false, error: "Link expired" }, 410);
   }
 
-  if (String(review.status || "") !== "PENDING") {
-    return json({ ok: false, error: "Already decided", status: review.status }, 409);
+  // Allow saving while the review is still editable.
+  // UI considers these editable: PENDING, ISSUED, AI_VISUALS_GENERATED
+  const status = String(review.status || "").trim();
+  const EDITABLE = new Set(["PENDING", "ISSUED", "AI_VISUALS_GENERATED"]);
+
+  if (!EDITABLE.has(status)) {
+    return json({ ok: false, error: "Already decided", status }, 409);
   }
+
 
   const finalMd = content_markdown.endsWith("\n") ? content_markdown : (content_markdown + "\n");
 
