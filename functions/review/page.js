@@ -25,7 +25,45 @@ export async function onRequest(context) {
   // We rely on /api/blog/review/debug to validate and return status.
   // The JS will call debug immediately and render state appropriately.
 
-  const page = buildWowReviewHtml({ token: t });
+  // Preload draft markdown so Edit Mode opens with the existing draft (legacy behavior).
+let draftMarkdown = "";
+try {
+  // 1) Validate token + get draft_id
+  const dbgUrl = new URL("/api/blog/review/debug", url.origin);
+  dbgUrl.searchParams.set("t", t);
+
+  const dbgRes = await fetch(dbgUrl.toString(), {
+    method: "GET",
+    headers: { "Cache-Control": "no-cache" },
+  });
+
+  if (dbgRes.ok) {
+    const dbgJson = await dbgRes.json().catch(() => ({}));
+
+    const draftId =
+      String(dbgJson?.draft_id || dbgJson?.draft?.draft_id || dbgJson?.row?.draft_id || "").trim();
+
+    // 2) Load draft markdown (same as Admin UI does)
+    if (draftId) {
+      const dUrl = new URL("/api/blog/draft/get/" + encodeURIComponent(draftId), url.origin);
+      const dRes = await fetch(dUrl.toString(), {
+        method: "GET",
+        headers: { "Cache-Control": "no-cache" },
+      });
+
+      if (dRes.ok) {
+        const dJson = await dRes.json().catch(() => ({}));
+        const md = dJson?.draft?.content_markdown || "";
+        draftMarkdown = String(md || "");
+      }
+    }
+  }
+} catch (_) {
+  draftMarkdown = "";
+}
+
+const page = buildWowReviewHtml({ token: t, draftMarkdown });
+
 
   return html(page, 200);
 }
@@ -64,8 +102,9 @@ function escapeHtml(s) {
     .replace(/'/g, "&#039;");
 }
 
-function buildWowReviewHtml({ token }) {
+function buildWowReviewHtml({ token, draftMarkdown }) {
   const tokenSafe = escapeHtml(token);
+  const draftTextSafe = escapeHtml(draftMarkdown || "");
 
   return `<!doctype html>
 <html>
@@ -785,7 +824,7 @@ function buildWowReviewHtml({ token }) {
   </style>
 </head>
 
-<body>
+<body data-review-token="${tokenSafe}">
   <div class="wrap">
 
     <div class="topbar">
@@ -887,7 +926,7 @@ function buildWowReviewHtml({ token }) {
                     Tip: keep changes minimal. We’ll preserve the overall structure.
                     <span id="dirtyState" style="margin-left:10px;color:rgba(255,255,255,.75)"></span>
                   </div>
-                  <textarea id="draftText" class="mono" placeholder="Loading draft…"></textarea>
+                  <textarea id="draftText" class="mono" placeholder="Loading draft…">${draftTextSafe}</textarea>
                 </div>
 
                 <div style="height:10px"></div>
