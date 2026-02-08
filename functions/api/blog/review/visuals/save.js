@@ -25,9 +25,22 @@ export async function onRequest(context) {
     return json({ ok: false, error: "Only 'hero' is supported right now", allowed: ["hero"] }, 400);
   }
 
-  if (!/^https:\/\//i.test(image_url)) {
-    return json({ ok: false, error: "image_url must be https://" }, 400);
-  }
+// Allow https URLs OR uploaded base64 images (admin parity)
+if (!/^https:\/\//i.test(image_url) && !/^data:image\//i.test(image_url)) {
+  return json(
+    { ok: false, error: "image_url must start with https:// or data:image/*" },
+    400
+  );
+}
+
+// Optional safety guard: limit base64 size (~2MB)
+if (/^data:image\//i.test(image_url) && image_url.length > 2_800_000) {
+  return json(
+    { ok: false, error: "data:image too large (max ~2MB). Use https:// URL instead." },
+    400
+  );
+}
+
 
   const db = env.GNR_MEDIA_BUSINESS_DB;
   const hash = await tokenHash(t, env);
