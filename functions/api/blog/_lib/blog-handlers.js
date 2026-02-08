@@ -393,7 +393,9 @@ async function upsertDraftAssetRow(env, { draft_id, visual_key, image_url, provi
               return { ok: false, error: "image_url must be https:// or data:image/*" };
       }
       const asset_id = `${did}:${k}`;
-      await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+
+      try {
+        await env.GNR_MEDIA_BUSINESS_DB.prepare(`
           INSERT INTO blog_draft_assets (
                 asset_id, draft_id, visual_key, asset_type, provider, prompt, image_url, status, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
@@ -402,12 +404,17 @@ async function upsertDraftAssetRow(env, { draft_id, visual_key, image_url, provi
                                     provider = excluded.provider, prompt = excluded.prompt,
                                           image_url = excluded.image_url, status = excluded.status,
                                                 updated_at = datetime('now')
-).bind(
-  asset_id, did, k,
-  String(asset_type || "image"), String(provider || "admin"),
-  String(prompt || "manual_upload"), url, String(status || "ready")
-).run();
+        `).bind(
+          asset_id, did, k,
+          String(asset_type || "image"), String(provider || "admin"),
+          String(prompt || "manual_upload"), url, String(status || "ready")
+        ).run();
+      } catch (e) {
+        return { ok: false, error: "asset_upsert_db_failed", detail: String(e?.message || e) };
+      }
+
       return { ok: true, asset_id };
+
 }
 
 // ============================================================
@@ -1318,7 +1325,9 @@ export async function upsertDraftAsset(ctx, draftid, key, assetData) {
                   status,
         });
       
-        if (!out?.ok) return errorResponse(ctx, out?.error || "upsert_failed", 400, out);
+        if (!out?.ok) {
+          return errorResponse(ctx, out?.error || "upsert_failed", 400, { ...out });
+        }
       
         return jsonResponse(ctx, { ok: true, ...out, draft_id, visual_key });
 }
