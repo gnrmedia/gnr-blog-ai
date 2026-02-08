@@ -381,7 +381,9 @@ async function hasHeroAsset(env, draft_id) {
               console.log("HAS_HERO_ASSET_FAIL_OPEN", { draft_id, error: String(e?.message || e) });
               return false;
       }
-      async function hasRealHeroAsset(env, draft_id) {
+}
+
+async function hasRealHeroAsset(env, draft_id) {
       try {
               const did = String(draft_id || "").trim();
               if (!did) return false;
@@ -411,8 +413,6 @@ async function hasHeroAsset(env, draft_id) {
               console.log("HAS_REAL_HERO_ASSET_FAIL_OPEN", { draft_id, error: String(e?.message || e) });
               return false;
       }
-}
-
 }
 
 async function upsertDraftAssetRow(env, { draft_id, visual_key, image_url, provider, asset_type, prompt, status }) {
