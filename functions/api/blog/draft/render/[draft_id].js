@@ -36,7 +36,7 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const parts = url.pathname.split("/");
   const draftid = String(parts[parts.length - 1] || "").trim();
-
+  const token = String(url.searchParams.get("t") || "").trim();
   if (!draftid) {
     return new Response(JSON.stringify({ ok: false, error: "draft_id required" }), {
       status: 400,
@@ -45,7 +45,7 @@ export async function onRequest(context) {
   }
 
   // renderDraftHtml returns a Response containing HTML
-  const res = await renderDraftHtml(context, draftid);
+  const res = await renderDraftHtml(context, draftid, token);
   if (!(res instanceof Response)) return res;
 
   const html = await res.text();
