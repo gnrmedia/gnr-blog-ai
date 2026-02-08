@@ -1148,6 +1148,14 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
             `).bind(String(draft.location_id || ""), String(draft.location_id || "").length).first();
       const businessName = biz?.business_name_raw || "this business";
 
+  const passport = await resolveMarketingPassport({
+  env,
+  location_id: draft.location_id,
+  abn: biz?.abn,
+  businessName,
+});
+
+
   // Latest client guidance
   let latestGuidance = null;
       try {
@@ -1171,17 +1179,125 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
           "", "Hard rules:", "- Follow 'Avoid' strictly.", "- Use 'Emphasise' to shape tone/angle/examples.", "",
         ].filter(Boolean).join("\n") : "";
 
+        // ============================================================
+// MARKETING PASSPORT RESOLVER (AUTHORITATIVE SOURCE)
+// ============================================================
+
+async function resolveMarketingPassport({ env, location_id, abn, businessName }) {
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const result = {
+    found: false,
+    source: null,
+    url: null,
+    match_basis: null,
+    confidence: 0,
+  };
+
+  // ---------- 1) GHL Media Library (PRIMARY) ----------
+  try {
+    if (env.GHL_GNR_API_KEY && location_id) {
+      const ghlKey = typeof env.GHL_GNR_API_KEY.get === "function"
+        ? await env.GHL_GNR_API_KEY.get()
+        : env.GHL_GNR_API_KEY;
+
+      const res = await fetch(
+        `https://services.leadconnectorhq.com/locations/${location_id}/media`,
+        {
+          headers: {
+            Authorization: `Bearer ${ghlKey}`,
+            Version: "2021-07-28",
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const items = Array.isArray(data?.media) ? data.media : [];
+
+        const abnNorm = norm(abn);
+        const nameNorm = norm(businessName);
+
+        const match = items.find((m) => {
+          const n = norm(m?.name || "");
+          return (
+            (abnNorm && n.includes(abnNorm)) ||
+            (nameNorm && n.includes(nameNorm))
+          );
+        });
+
+        if (match?.url) {
+          return {
+            found: true,
+            source: "ghl_media",
+            url: match.url,
+            match_basis: abnNorm ? "abn" : "business_name",
+            confidence: 0.95,
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.log("PASSPORT_GHL_LOOKUP_FAIL_OPEN", String(e?.message || e));
+  }
+
+  // ---------- 2) gnrmedia.global index (SECONDARY) ----------
+  try {
+    const idxUrl = "https://gnrmedia.global/marketing_passports/index.json";
+    const res = await fetch(idxUrl, { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const rows = await res.json();
+      const abnNorm = norm(abn);
+      const nameNorm = norm(businessName);
+
+      const hit = Array.isArray(rows)
+        ? rows.find((r) =>
+            norm(r.abn || "").includes(abnNorm) ||
+            norm(r.business_name || "").includes(nameNorm)
+          )
+        : null;
+
+      if (hit?.pdf_url) {
+        return {
+          found: true,
+          source: "gnrmedia_index",
+          url: hit.pdf_url,
+          match_basis: hit.abn ? "abn" : "business_name",
+          confidence: 0.85,
+        };
+      }
+    }
+  } catch (e) {
+    console.log("PASSPORT_INDEX_LOOKUP_FAIL_OPEN", String(e?.message || e));
+  }
+
+  return result;
+}
+
+
   // Context quality + fetched excerpts
-  const mpUrl = String(biz?.marketing_passport_url || "").trim();
-      const siteUrl = String(biz?.website_url || "").trim();
-      const blogUrl = String(biz?.blog_url || "").trim();
-      const mpText = mpUrl ? await fetchContextText(mpUrl, { maxChars: 7000 }) : "";
+const mpUrl = passport.found ? passport.url : null;
+const siteUrl = String(biz?.website_url || "").trim();
+const blogUrl = String(biz?.blog_url || "").trim();
+
+const mpText = mpUrl ? await fetchContextText(mpUrl, { maxChars: 7000 }) : "";
+const siteText = !mpText && siteUrl ? await fetchContextText(siteUrl, { maxChars: 7000 }) : "";
+const blogText = blogUrl ? await fetchContextText(blogUrl, { maxChars: 5000 }) : "";
+
       const siteText = !mpText && siteUrl ? await fetchContextText(siteUrl, { maxChars: 7000 }) : "";
       const blogText = blogUrl ? await fetchContextText(blogUrl, { maxChars: 5000 }) : "";
 
   let context_quality = "low", context_quality_reason = "no_sources";
       const mpOk = !!(mpUrl && mpText && mpText.length >= 250);
-      if (mpOk) { context_quality = "high"; context_quality_reason = "marketing_passport_ok"; }
+      if (passport.found && mpText.length >= 250) {
+  context_quality = "high";
+  context_quality_reason = `marketing_passport_${passport.source}`;
+} else if (siteText || blogText) {
+  context_quality = "medium";
+  context_quality_reason = "passport_missing_using_website";
+}
+
       else if (mpUrl && !mpOk) {
               context_quality = (siteUrl || blogUrl || siteText || blogText) ? "medium" : "low";
               context_quality_reason = (siteUrl || blogUrl || siteText || blogText) ? "marketing_passport_unreadable" : "marketing_passport_unreadable_no_other_sources";
@@ -1270,13 +1386,25 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
           "Hard rules:", "- The article MUST follow the EIO decisions.", "- The article MUST respect guardrails.", "",
         ].join("\n");
 
-  const system = [
-          "You are an expert marketing blog writer for GNR Media.",
-          "Write in Australian English.", "Output MUST be Markdown only.",
-          "No hype. Clear, helpful, practical.", "Avoid making legal/financial promises.",
-          "Do not mention 'AI' or 'ChatGPT'.",
-          "You MUST follow the GNR WOW ARTICLE STANDARD provided in the prompt.",
-        ].join(" ");
+ const system = [
+  "You are an expert marketing blog writer for GNR Media.",
+  "Write in Australian English.",
+  "Output MUST be Markdown only.",
+  "No hype. Clear, helpful, practical.",
+  "Avoid making legal/financial promises.",
+  "Do not mention 'AI' or 'ChatGPT'.",
+
+  // SOURCE AUTHORITY (LOCKED)
+  "SOURCE AUTHORITY RULES (NON-NEGOTIABLE):",
+  "- If a Marketing Passport is provided, it is the authoritative source of truth.",
+  "- The Marketing Passport overrides website copy, tone, positioning, offers, ICP, and strategy.",
+  "- Website content is descriptive only and MUST NOT override the Marketing Passport.",
+  "- External or viral content is inspiration only and MUST NOT be quoted, mirrored, or referenced.",
+
+  // STANDARDS
+  "You MUST follow the GNR WOW ARTICLE STANDARD provided in the prompt.",
+].join(" ");
+
 
   const draftTitleHint = String(draft?.title || "").trim() || `Marketing foundations for ${businessName}`;
       const defaultPrompt = `Create a premium, editorial-grade blog article for ${businessName}.
