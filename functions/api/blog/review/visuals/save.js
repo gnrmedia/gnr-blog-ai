@@ -65,9 +65,15 @@ if (/^data:image\//i.test(image_url) && image_url.length > 2_800_000) {
     return json({ ok: false, error: "Link expired" }, 410);
   }
 
-  if (String(review.status || "").toUpperCase() !== "PENDING") {
-    return json({ ok: false, error: "Review is not active", status: review.status }, 409);
-  }
+// Allow saving visuals while review is still editable.
+// Keep parity with /api/blog/review/save (PENDING, ISSUED, AI_VISUALS_GENERATED)
+const st = String(review.status || "").trim().toUpperCase();
+const EDITABLE = new Set(["PENDING", "ISSUED", "AI_VISUALS_GENERATED"]);
+
+if (!EDITABLE.has(st)) {
+  return json({ ok: false, error: "Review is not active", status: review.status }, 409);
+}
+
 
   // Upsert hero asset
   const asset_id = `${String(review.draft_id)}:${visual_key}`;
