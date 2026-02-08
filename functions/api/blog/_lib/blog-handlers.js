@@ -225,6 +225,24 @@ const fetchContextText = async (url, { maxChars = 6000, timeoutMs = 8000 } = {})
 };
 
 // ============================================================
+// MARKETING PASSPORT RESOLVER (AUTHORITATIVE SOURCE)
+// ============================================================
+async function resolveMarketingPassport({ env, location_id, abn, businessName }) {
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const result = {
+    found: false,
+    source: null,
+    url: null,
+    match_basis: null,
+    confidence: 0,
+  };
+
+  // ...rest of your resolver function here...
+
+  return result;
+}
+// ============================================================
 // MARKDOWN → HTML (snarkdown-style + sanitizer)
 // ============================================================
 function snarkdown(md) {
@@ -946,9 +964,11 @@ export async function createDraftForLocation(ctx, locationid) {
               });
       }
       const draft_id = crypto.randomUUID();
-      const biz = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-          SELECT business_name_raw FROM businesses WHERE location_id LIKE ? AND length(location_id) = ? LIMIT 1
-            `).bind(inputNorm, inputNorm.length).first();
+const biz = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      SELECT business_name_raw, abn, website_url, blog_url
+          FROM businesses WHERE location_id LIKE ? AND length(location_id) = ? LIMIT 1
+            `).bind(String(draft.location_id || ""), String(draft.location_id || "").length).first();
+
       const businessName = biz?.business_name_raw || inputNorm;
       const title = `Draft article for ${businessName}`;
       const content_md = `# ${title}\n\nThis is a placeholder draft (no AI yet).\n\nBusiness: ${businessName}\n`;
@@ -1179,20 +1199,6 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
           "", "Hard rules:", "- Follow 'Avoid' strictly.", "- Use 'Emphasise' to shape tone/angle/examples.", "",
         ].filter(Boolean).join("\n") : "";
 
-        // ============================================================
-// MARKETING PASSPORT RESOLVER (AUTHORITATIVE SOURCE)
-// ============================================================
-
-async function resolveMarketingPassport({ env, location_id, abn, businessName }) {
-  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-
-  const result = {
-    found: false,
-    source: null,
-    url: null,
-    match_basis: null,
-    confidence: 0,
-  };
 
   // ---------- 1) GHL Media Library (PRIMARY) ----------
   try {
@@ -1285,25 +1291,16 @@ const mpText = mpUrl ? await fetchContextText(mpUrl, { maxChars: 7000 }) : "";
 const siteText = !mpText && siteUrl ? await fetchContextText(siteUrl, { maxChars: 7000 }) : "";
 const blogText = blogUrl ? await fetchContextText(blogUrl, { maxChars: 5000 }) : "";
 
-      const siteText = !mpText && siteUrl ? await fetchContextText(siteUrl, { maxChars: 7000 }) : "";
-      const blogText = blogUrl ? await fetchContextText(blogUrl, { maxChars: 5000 }) : "";
+let context_quality = "low";
+let context_quality_reason = "no_sources";
 
-  let context_quality = "low", context_quality_reason = "no_sources";
-      const mpOk = !!(mpUrl && mpText && mpText.length >= 250);
-      if (passport.found && mpText.length >= 250) {
+if (passport.found && mpText && mpText.length >= 250) {
   context_quality = "high";
   context_quality_reason = `marketing_passport_${passport.source}`;
 } else if (siteText || blogText) {
   context_quality = "medium";
-  context_quality_reason = "passport_missing_using_website";
+  context_quality_reason = passport.found ? "passport_unreadable_using_website" : "passport_missing_using_website";
 }
-
-      else if (mpUrl && !mpOk) {
-              context_quality = (siteUrl || blogUrl || siteText || blogText) ? "medium" : "low";
-              context_quality_reason = (siteUrl || blogUrl || siteText || blogText) ? "marketing_passport_unreadable" : "marketing_passport_unreadable_no_other_sources";
-      } else if (siteUrl || blogUrl || siteText || blogText) {
-              context_quality = "medium"; context_quality_reason = "marketing_passport_missing";
-      }
 
   // Prior drafts + editorial intelligence
   const priorDraftsContext = await getPriorDraftsContext(env, draft.location_id, draft.draft_id, Number(env.PRIOR_DRAFTS_LIMIT || 6));
