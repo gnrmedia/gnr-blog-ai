@@ -1913,9 +1913,115 @@ export async function backfillBusinessWebsitesMaster(ctx, limit = 50) {
 }
 
 // ---------- Editorial / auto cadence ----------
-export async function runAutoCadence(_ctx, limit = 25) {
-      // TODO: implement
+export async function runAutoCadence(ctx, limit = 25) {
+  const { env } = ctx;
+
+  const lim = Math.min(Math.max(parseInt(String(limit || "25"), 10) || 25, 1), 200);
+
+  // 1) Get enabled AUTO locations
+  let rows = [];
+  try {
+    const rs = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      SELECT location_id
+        FROM blog_program_locations
+       WHERE enabled = 1
+         AND lower(COALESCE(run_mode,'manual')) = 'auto'
+       ORDER BY datetime(COALESCE(added_at, updated_at, created_at)) DESC
+       LIMIT ?
+    `).bind(lim).all();
+    rows = rs?.results || [];
+  } catch (e) {
+    return errorResponse(ctx, "auto_cadence_query_failed", 500, { detail: String(e?.message || e) });
+  }
+
+  const started_at = nowIso();
+  const out = {
+    ok: true,
+    action: "auto_cadence_ran",
+    started_at,
+    limit: lim,
+    locations_considered: rows.length,
+    successes: [],
+    failures: [],
+  };
+
+  // Helper: unwrap a jsonResponse() Response into an object
+  async function unwrapJson(resp) {
+    if (!(resp instanceof Response)) return resp;
+    const txt = await resp.text().catch(() => "");
+    try { return JSON.parse(txt || "{}"); } catch (_) { return { ok: false, raw: txt }; }
+  }
+
+  // 2) For each location: create draft → generate AI (fail-open per location)
+  for (const r of rows) {
+    const location_id = String(r.location_id || "").trim();
+    if (!location_id) continue;
+
+    try {
+      // Create draft
+      const created = await createDraftForLocation(ctx, location_id);
+      const createdObj = await unwrapJson(created);
+
+      if (!createdObj?.ok || !createdObj?.draft_id) {
+        out.failures.push({
+          location_id,
+          step: "create_draft",
+          error: createdObj?.error || "createDraftForLocation failed",
+          detail: createdObj || null,
+        });
+        continue;
+      }
+
+      const draft_id = String(createdObj.draft_id);
+
+      // Generate AI (text + visuals)
+      const gen = await generateAiForDraft(ctx, draft_id, { force: false });
+      const genObj = await unwrapJson(gen);
+
+      if (!genObj?.ok) {
+        out.failures.push({
+          location_id,
+          draft_id,
+          step: "generate_ai",
+          error: genObj?.error || "generateAiForDraft failed",
+          detail: genObj || null,
+        });
+        continue;
+      }
+
+      out.successes.push({
+        location_id,
+        draft_id,
+        generated: genObj?.action || genObj?.status || "ok",
+      });
+
+      // Optional: event log (fail-open)
+      try {
+        await logAiEventFailOpen(env, {
+          kind: "AUTO_CADENCE_RUN",
+          model: String(env.CF_AI_MODEL || env.OPENAI_MODEL || ""),
+          draft_id,
+          detail: { location_id },
+        });
+      } catch (_) {}
+
+    } catch (e) {
+      out.failures.push({
+        location_id,
+        step: "unexpected",
+        error: "exception",
+        detail: String(e?.message || e),
+      });
+    }
+  }
+
+  out.finished_at = nowIso();
+  out.success_count = out.successes.length;
+  out.failure_count = out.failures.length;
+
+  return out;
 }
+
 export async function getEditorialBrain(ctx, locationid, limit = 10) {
       // TODO: implement
 }
