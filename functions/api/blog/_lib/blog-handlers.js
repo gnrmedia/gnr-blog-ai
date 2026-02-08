@@ -591,11 +591,33 @@ const gridLines = Array.from({ length: 18 }).map((_, i) =>
 async function autoGenerateVisualsForDraft(env, draft_id) {
       const did = String(draft_id || "").trim();
       if (!did) return { ok: false, error: "draft_id required" };
-        // ✅ Idempotency: if hero already exists, do nothing (prevents extra image spend)
-        const alreadyHasHero = await hasHeroAsset(env, did);
-        if (alreadyHasHero) {
-                  return { ok: true, draft_id: did, generated: [], skipped: ["hero_already_present"] };
+        // ✅ Idempotency: if hero already exists AND is NOT the SVG fallback, do nothing.
+        // We MUST treat the SVG fallback as "missing" so we can upgrade to the real OpenAI image.
+        let heroRow = null;
+        try {
+              heroRow = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+                    SELECT asset_type, provider, image_url
+                      FROM blog_draft_assets
+                     WHERE draft_id = ?
+                       AND lower(visual_key) = 'hero'
+                     LIMIT 1
+              `).bind(did).first();
+        } catch (_) {}
+
+        const heroUrl = String(heroRow?.image_url || "").trim();
+        const heroType = String(heroRow?.asset_type || "").trim().toLowerCase();
+        const heroProvider = String(heroRow?.provider || "").trim().toLowerCase();
+
+        const hasSomething = !!heroUrl;
+        const isFallbackSvg =
+              heroType === "svg" ||
+              heroProvider === "system" ||
+              /^data:image\/svg\+xml/i.test(heroUrl);
+
+        if (hasSomething && !isFallbackSvg) {
+              return { ok: true, draft_id: did, generated: [], skipped: ["hero_already_present"] };
         }
+
       const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
           SELECT draft_id, title, content_markdown FROM blog_drafts WHERE draft_id = ? LIMIT 1
             `).bind(did).first();
@@ -1053,11 +1075,38 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
   if (!force && draft.content_markdown && String(draft.content_markdown).includes("<!-- AI_GENERATED -->")) {
           const heroExists = await hasHeroAsset(env, draft.draft_id);
           if (!heroExists) {
-                    try { await autoGenerateVisualsForDraft(env, draft.draft_id); } catch (e) {
-                                console.log("AUTO_VISUALS_FAIL_ON_ALREADY_GENERATED", { draft_id: draft.draft_id, error: String(e?.message || e) });
-                    }
+  // Auto-generate visuals (fail-open)
+  // Cost rule:
+  // - force=true  => TEXT ONLY (do not regenerate images)
+  // - force=false => ensure visuals exist (and upgrade SVG fallback if present)
+  try {
+          if (!force) {
+                await autoGenerateVisualsForDraft(env, draft.draft_id);
+          } else {
+                // Force AI: do NOT spend on images.
+                // However, if hero is truly missing (no row at all), create fallback SVG so renderer doesn't break.
+                const heroExists = await hasHeroAsset(env, draft.draft_id);
+                if (!heroExists) {
+                      await autoGenerateVisualsForDraft(env, draft.draft_id);
+                }
           }
-          return jsonResponse(ctx, { ok: true, action: heroExists ? "already_generated" : "already_generated_hero_generated", draft_id: draft.draft_id, location_id: draft.location_id, status: draft.status, hero_exists: heroExists });
+  } catch (e) {
+          console.log("AUTO_VISUALS_FAIL_SYNC", { draft_id: draft.draft_id, error: String(e?.message || e) });
+  }
+
+          }
+    const assetsAfter = await getDraftAssetsMap(env, draft.draft_id);
+  const hero_url = String(assetsAfter?.hero || "").trim() || null;
+
+  return jsonResponse(ctx, {
+        ok: true,
+        action: "generated",
+        draft_id: draft.draft_id,
+        location_id: draft.location_id,
+        status: DRAFT_STATUS.AI_VISUALS_GENERATED,
+        hero_url,
+  });
+
   }
 
   // Business context
