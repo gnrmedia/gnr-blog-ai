@@ -397,6 +397,7 @@ function buildJs() {
     "              }",
     "              // Fill the URL field (source of truth for save + preview)",
     "              if(clientImageUrl) clientImageUrl.value = dataUrl;",
+    "              if(clientSaveVisualBtn) clientSaveVisualBtn.disabled = false;",
     "              // IMPORTANT: do NOT auto-preview. Hide image + show 'ready' message.",
     "              if(clientImagePreview) clientImagePreview.style.display = 'none';",
     "              if(clientImagePreviewEmpty){",
