@@ -576,6 +576,12 @@ function buildWowReviewHtml({ token, draftMarkdown }) {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       min-height: 240px;
     }
+    /* Edit-mode textarea: solid black so markdown is easy to read */
+    textarea#draftText{
+      background: #000;
+      color: rgba(255,255,255,.95);
+      border: 1px solid rgba(255,255,255,.18);
+    }
 
     .row{display:flex; gap:10px; flex-wrap:wrap;}
     .row > *{flex:1; min-width: 220px;}
