@@ -1185,7 +1185,13 @@ const map = {
   "cta-banner": block("cta", "CTA Banner", "This visual will be auto-generated (or uploaded) by the platform."),
 };
 
-return map[kind] || block("visual", `Visual: ${kind}`, "This visual will be auto-generated (or uploaded) by the platform.");
+// STEP 2 RULE: only show placeholder for HERO.
+// Suppress all other missing visuals for now (CTA, diagrams, charts, etc).
+if (kind === "hero") {
+  return map.hero;
+}
+return "";
+
 
       });
 
