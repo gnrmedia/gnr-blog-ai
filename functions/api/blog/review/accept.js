@@ -3,7 +3,7 @@
 
 // PUBLIC: POST /api/blog/review/accept
 // Body: { t: "<token>", follow_emphasis?: "...", follow_avoid?: "..." }
-import { enqueuePublishJobsForDraft, processQueuedPublishJobsForDraft } from "../_lib/publish/index.js";
+import { enqueuePublishJobsForDraft, processQueuedPublishJobsForDraft } from "../_lib/publisher/index.js";
 
 export async function onRequest(context) {
   const { request, env, ctx } = context;
@@ -115,12 +115,13 @@ try {
       });
 
       // Best-effort immediate processing (fail-open)
-      await processQueuedPublishJobsForDraft({
-        db,
-        draft_id: review.draft_id,
-        location_id: review.location_id,
-        limit: 10
-      });
+await processQueuedPublishJobsForDraft({
+  db,
+  env,
+  draft_id: review.draft_id,
+  location_id: review.location_id
+});
+
     })());
   }
 } catch (_) {}
