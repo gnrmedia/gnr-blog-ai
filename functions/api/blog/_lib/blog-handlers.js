@@ -1163,9 +1163,20 @@ try {
                         const label = labelMap[kind] || `Visual: ${kind}`;
                         return `<figure class="gnr-visual gnr-${kind}"><img class="gnr-img" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy" /></figure>`;
               }
-              const block = (k, l) => `<section class="gnr-visual gnr-${k}"><div class="gnr-visual-inner"><div class="gnr-visual-label">${l}</div><div class="gnr-visual-note">This will be auto-generated (or uploaded) by the platform.</div></div></section>`;
-              const map = { hero: block("hero", "Hero image"), "infographic-summary": block("infographic", "Infographic summary"), "process-diagram": block("diagram", "Process diagram"), "proof-chart": block("chart", "Proof chart"), "pull-quote-graphic": block("quote", "Pull quote graphic"), "cta-banner": block("cta", "CTA banner") };
-              return map[kind] || block("visual", `Visual: ${kind}`);
+const block = (k, l, note) =>
+  `<section class="gnr-visual gnr-${k}"><div class="gnr-visual-inner"><div class="gnr-visual-label">${l}</div><div class="gnr-visual-note">${note}</div></div></section>`;
+
+const map = {
+  hero: block("hero", "Hero Picture — Add Here", "This hero image must be added before the draft can continue."),
+  "infographic-summary": block("infographic", "Infographic Summary", "This visual will be auto-generated (or uploaded) by the platform."),
+  "process-diagram": block("diagram", "Process Diagram", "This visual will be auto-generated (or uploaded) by the platform."),
+  "proof-chart": block("chart", "Proof Chart", "This visual will be auto-generated (or uploaded) by the platform."),
+  "pull-quote-graphic": block("quote", "Pull Quote Graphic", "This visual will be auto-generated (or uploaded) by the platform."),
+  "cta-banner": block("cta", "CTA Banner", "This visual will be auto-generated (or uploaded) by the platform."),
+};
+
+return map[kind] || block("visual", `Visual: ${kind}`, "This visual will be auto-generated (or uploaded) by the platform.");
+
       });
 
   const title = escapeHtml(String(row.title || "Draft article").trim());
