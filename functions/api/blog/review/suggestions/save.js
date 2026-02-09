@@ -14,9 +14,20 @@ export async function onRequest(context) {
   const body = await request.json().catch(() => ({}));
   const t = String(body.t || "").trim();
 
-  const suggestions = String(body.suggestions ?? "").trim();
-  const follow_emphasis = String(body.follow_emphasis ?? "").trim();
-  const follow_avoid = String(body.follow_avoid ?? "").trim();
+  const has = (k) => Object.prototype.hasOwnProperty.call(body, k);
+
+  // Accept BOTH: legacy "suggestions" and canonical "client_topic_suggestions"
+  const suggestionsProvided = has("suggestions") || has("client_topic_suggestions");
+  const suggestionsRaw = suggestionsProvided
+    ? String((has("suggestions") ? body.suggestions : body.client_topic_suggestions) ?? "").trim()
+    : null;
+
+  const followEmphasisProvided = has("follow_emphasis");
+  const followAvoidProvided = has("follow_avoid");
+
+  const follow_emphasis_raw = followEmphasisProvided ? String(body.follow_emphasis ?? "").trim() : null;
+  const follow_avoid_raw = followAvoidProvided ? String(body.follow_avoid ?? "").trim() : null;
+
 
   if (!t) return json({ ok: false, error: "token (t) required" }, 400);
 
@@ -41,20 +52,29 @@ export async function onRequest(context) {
     return json({ ok: false, error: "Link expired" }, 410);
   }
 
-  // Allow clearing: store NULL when empty string is sent
-  const suggestionsDb = suggestions === "" ? null : suggestions;
-  const followEmphasisDb = follow_emphasis === "" ? null : follow_emphasis;
-  const followAvoidDb = follow_avoid === "" ? null : follow_avoid;
+  // Contract:
+  // - Omitted field => NO CHANGE
+  // - Empty string  => EXPLICIT CLEAR (store NULL)
+  // - Non-empty     => OVERWRITE
+  const suggestionsDb = suggestionsProvided ? (suggestionsRaw === "" ? null : suggestionsRaw) : null;
+  const followEmphasisDb = followEmphasisProvided ? (follow_emphasis_raw === "" ? null : follow_emphasis_raw) : null;
+  const followAvoidDb = followAvoidProvided ? (follow_avoid_raw === "" ? null : follow_avoid_raw) : null;
 
   await db.prepare(`
     UPDATE blog_draft_reviews
     SET
-      client_topic_suggestions = ?,
-      follow_emphasis = ?,
-      follow_avoid = ?,
+      client_topic_suggestions = CASE WHEN ? = 0 THEN client_topic_suggestions ELSE ? END,
+      follow_emphasis         = CASE WHEN ? = 0 THEN follow_emphasis         ELSE ? END,
+      follow_avoid            = CASE WHEN ? = 0 THEN follow_avoid            ELSE ? END,
       updated_at = datetime('now')
     WHERE review_id = ?
-  `).bind(suggestionsDb, followEmphasisDb, followAvoidDb, review.review_id).run();
+  `).bind(
+    suggestionsProvided ? 1 : 0, suggestionsDb,
+    followEmphasisProvided ? 1 : 0, followEmphasisDb,
+    followAvoidProvided ? 1 : 0, followAvoidDb,
+    review.review_id
+  ).run();
+
 
   // Sticky guidance table (fail-open if missing)
   try {
