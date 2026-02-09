@@ -3,6 +3,7 @@
 
 // PUBLIC: POST /api/blog/review/accept
 // Body: { t: "<token>", follow_emphasis?: "...", follow_avoid?: "..." }
+import { enqueuePublishJobsForDraft } from "../_lib/publish/index.js";
 
 export async function onRequest(context) {
   const { request, env, ctx } = context;
@@ -100,6 +101,19 @@ export async function onRequest(context) {
       approved_by_email=?
     WHERE draft_id=?
   `).bind(review.client_email || null, review.draft_id).run();
+
+  // ------------------------------------------------------------
+// Enqueue publish jobs (FAIL-OPEN, async)
+// ------------------------------------------------------------
+try {
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(enqueuePublishJobsForDraft({
+      db,
+      draft_id: review.draft_id,
+      location_id: review.location_id
+    }));
+  }
+} catch (_) {}
 
   // (Optional) background tasks later; safe no-op for now
   try {
