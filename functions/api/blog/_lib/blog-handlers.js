@@ -387,7 +387,15 @@ const markdownToHtml = (md) => sanitizeHtml(snarkdown(String(md || "")));
 // VISUAL PLACEHOLDER HANDLING
 // ============================================================
 const VISUAL_TOKEN_PREFIX = "GNRVISUALTOKEN:";
-const VISUAL_KINDS = ["hero"];
+const VISUAL_KINDS = [
+  "hero",
+  "infographic_summary",
+  "process_diagram",
+  "proof_chart",
+  "pull_quote_graphic",
+  "cta_banner",
+];
+
 
 const kindToAssetKey = (kind) =>
       String(kind || "").trim().toLowerCase().replace(/-/g, "_");
@@ -415,7 +423,15 @@ const visualCommentsToTokens = (md) => {
 
 const replaceVisualTokensInHtml = (html, blockFn) => {
       let out = String(html || "");
-      const aliasToCanonical = { hero: "hero" };
+      const aliasToCanonical = {
+  "hero": "hero",
+  "infographic-summary": "infographic-summary",
+  "process-diagram": "process-diagram",
+  "proof-chart": "proof-chart",
+  "pull-quote-graphic": "pull-quote-graphic",
+  "cta-banner": "cta-banner",
+};
+
       const tokenPrefixes = [
               VISUAL_TOKEN_PREFIX, "_GNRVISUAL:", "__GNRVISUAL__:",
               "GNRVISUAL:", "_GNRVISUAL_:", "GNRVISUAL_:",
@@ -650,10 +666,24 @@ async function cloudflareImagesUploadBase64({ env, b64, fileNameHint }) {
 }
 
 async function generateAndStoreImage({ env, prompt, size, fileNameHint }) {
-      const out = await openaiGenerateImageBase64({ env, prompt, size });
-      const url = await cloudflareImagesUploadBase64({ env, b64: out.b64, fileNameHint });
-      return { url, openai_url: out.imageUrl || null };
+  const out = await openaiGenerateImageBase64({ env, prompt, size });
+
+  // Preferred: Cloudflare Images
+  try {
+    const url = await cloudflareImagesUploadBase64({
+      env,
+      b64: out.b64,
+      fileNameHint,
+    });
+    return { url, openai_url: out.imageUrl || null, storage: "cloudflare_images" };
+  } catch (e) {
+    // Fail-open: store inline PNG so the hero still persists in D1
+    console.log("CF_IMAGES_UPLOAD_FAIL_OPEN_INLINE", String(e?.message || e));
+    const inline = "data:image/png;base64," + String(out.b64 || "").trim();
+    return { url: inline, openai_url: out.imageUrl || null, storage: "inline_base64" };
+  }
 }
+
 
 // ============================================================
 // AI EVENT LOGGING (D1, fail-open)
@@ -1108,6 +1138,31 @@ try {
               bodyHtml = `<pre style="white-space:pre-wrap;">${escapeHtml(md)}</pre>`;
       }
 
+
+  function normalizeOrderedListsToBullets(md) {
+  const lines = String(md || "").split("\n");
+  let inNumberedRun = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Detect "1. item" style lines
+    const m = line.match(/^(\s*)\d+\.\s+(.*)$/);
+    if (m) {
+      inNumberedRun = true;
+      lines[i] = `${m[1]}- ${m[2]}`;
+      continue;
+    }
+
+    // If we were in a numbered run and hit a blank line, keep it blank (fine)
+    if (inNumberedRun && line.trim() === "") continue;
+
+    // If we hit a non-list line, end run
+    inNumberedRun = false;
+  }
+  return lines.join("\n");
+}
+    
   const assets = await getDraftAssetsMap(env, draft_id);
       bodyHtml = replaceVisualTokensInHtml(bodyHtml, (kind) => {
               const url = String(assets?.[kindToAssetKey(kind)] || "").trim();
@@ -1439,6 +1494,8 @@ if (passport.found && mpText && mpText.length >= 250) {
       let md;
       try {
               md = await generateMarkdownWithAI({ env, prompt, system });
+              md = normalizeOrderedListsToBullets(md);
+
       } catch (e) {
               return errorResponse(ctx, "AI generation failed", 502, { detail: String(e?.message || e) });
       }
