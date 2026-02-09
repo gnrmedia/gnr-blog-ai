@@ -1510,7 +1510,8 @@ try {
       UPDATE blog_drafts SET content_markdown = ?, content_html = ?, status = ?,
             context_quality = ?, context_quality_reason = ?, editorial_intelligence_json = ?,
                   updated_at = datetime('now') WHERE draft_id = ?
-                    `).bind(finalMd, finalHtml, DRAFT_STATUS.AI_VISUALS_GENERATED, context_quality, context_quality_reason, eioJson, draft.draft_id).run();
+                    - ).bind(finalMd, finalHtml, DRAFT_STATUS.AI_VISUALS_GENERATED, context_quality, context_quality_reason, eioJson, draft.draft_id).run();
++ ).bind(finalMd, finalHtml, DRAFT_STATUS.AI_GENERATED, context_quality, context_quality_reason, eioJson, draft.draft_id).run();
 
   // Persist fingerprint (fail-open)
   try {
@@ -1528,11 +1529,85 @@ try {
   // Cost rule: force=true => TEXT ONLY (skip images)
   try {
           if (!force) await autoGenerateVisualsForDraft(env, draft.draft_id);
-  } catch (e) {
-          console.log("AUTO_VISUALS_FAIL_SYNC", { draft_id: draft.draft_id, error: String(e?.message || e) });
-  }
+ // ----------------------------
+// VISUALS (must not be silent)
+// ----------------------------
+const visual_debug = {
+  attempted: false,
+  auto_visuals_ok: null,
+  auto_visuals_error: null,
+  hero_row_present_after: false,
+  hero_fallback_inserted: false,
+  hero_fallback_error: null,
+};
 
-  return jsonResponse(ctx, { ok: true, action: "generated", draft_id: draft.draft_id, location_id: draft.location_id, status: DRAFT_STATUS.AI_VISUALS_GENERATED });
+try {
+  visual_debug.attempted = true;
+  if (!force) await autoGenerateVisualsForDraft(env, draft.draft_id);
+  visual_debug.auto_visuals_ok = true;
+} catch (e) {
+  visual_debug.auto_visuals_ok = false;
+  visual_debug.auto_visuals_error = String(e?.message || e);
+  console.log("AUTO_VISUALS_FAIL_SYNC", { draft_id: draft.draft_id, error: visual_debug.auto_visuals_error });
+}
+
+// If NO hero row exists, force-insert a fallback hero so blog_draft_assets is never empty.
+try {
+  visual_debug.hero_row_present_after = await hasHeroAsset(env, draft.draft_id);
+
+  if (!visual_debug.hero_row_present_after) {
+    const fallbackUrl = svgToDataUrl(buildAbstractPanelSvg());
+    const out = await upsertDraftAssetRow(env, {
+      draft_id: draft.draft_id,
+      visual_key: "hero",
+      image_url: fallbackUrl,
+      provider: "system",
+      asset_type: "svg",
+      prompt: "hero_fallback_svg_no_text",
+      status: "ready",
+    });
+
+    if (!out?.ok) {
+      visual_debug.hero_fallback_error = String(out?.error || "fallback_upsert_failed");
+    } else {
+      visual_debug.hero_fallback_inserted = true;
+    }
+
+    visual_debug.hero_row_present_after = await hasHeroAsset(env, draft.draft_id);
+  }
+} catch (e) {
+  visual_debug.hero_fallback_error = String(e?.message || e);
+}
+
+// If hero still missing, FAIL the request (WOW requires a hero)
+if (!visual_debug.hero_row_present_after) {
+  return errorResponse(ctx, "visuals_failed_no_hero_asset", 502, {
+    draft_id: draft.draft_id,
+    location_id: draft.location_id,
+    visual_debug,
+  });
+}
+
+// Now and only now: mark visuals generated
+await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+  UPDATE blog_drafts
+     SET status = ?,
+         updated_at = datetime('now')
+   WHERE draft_id = ?
+`).bind(DRAFT_STATUS.AI_VISUALS_GENERATED, draft.draft_id).run();
+
+const assetsAfter = await getDraftAssetsMap(env, draft.draft_id);
+const hero_url = String(assetsAfter?.hero || "").trim() || null;
+
+return jsonResponse(ctx, {
+  ok: true,
+  action: "generated",
+  draft_id: draft.draft_id,
+  location_id: draft.location_id,
+  status: DRAFT_STATUS.AI_VISUALS_GENERATED,
+  hero_url,
+  visual_debug,
+});
 }
 
 // ============================================================
