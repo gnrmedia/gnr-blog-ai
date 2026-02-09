@@ -423,22 +423,25 @@ function buildWowReviewHtml({ token, draftMarkdown }) {
   line-height: 1.6;
 }
 
-/* Add comfortable padding inside the “screen” */
+/* Ensure injected render content fits inside phone viewport */
 .phoneScreen .gnr-render-root{
-  padding: 18px 16px 22px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 14px 12px 18px;
+  overflow: hidden;
+}
+.phoneScreen img{
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
-
-    /* Ensure injected render content behaves in a phone viewport */
-    .phoneScreen .gnr-render-root{
-      max-width: 100%;
-      margin: 0 auto;
-      padding: 0;
-    }
-    .phoneScreen img{
-      max-width: 100%;
-      height: auto;
-    }
+/* Hero image constrained inside phone frame */
+.phoneScreen .gnr-visual.gnr-hero{
+  border-radius: 12px;
+  box-shadow: none;
+  margin: 10px 0;
+}
 
     /* On small screens, don't force a tall "phone"; just flow normally */
     @media (max-width: 520px){
