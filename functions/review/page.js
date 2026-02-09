@@ -506,7 +506,7 @@ function buildWowReviewHtml({ token, draftMarkdown }) {
     }
     .gnr-visual-note{font-size:13px;color:#667085}
 
-    /* Hero special */
+    /* Hero special (mobile-safe cover fit) */
     .gnr-visual.gnr-hero{
       border:0;
       border-radius:22px;
@@ -514,19 +514,28 @@ function buildWowReviewHtml({ token, draftMarkdown }) {
       box-shadow: 0 18px 50px rgba(0,0,0,.18);
       background:#0b0f1a;
       position:relative;
+
+      /* lock aspect ratio without hacks */
+      aspect-ratio: 16 / 9;
     }
+
+    /* Fallback for older browsers (kept minimal) */
     .gnr-visual.gnr-hero:before{
       content:"";
       display:block;
       padding-top:56.25%;
-      background:
-        radial-gradient(80% 60% at 70% 20%, rgba(34,197,94,.22), rgba(0,0,0,0) 60%),
-        linear-gradient(135deg, #0b0f1a, #111827 55%, #7c3aed);
     }
+
     .gnr-visual.gnr-hero img.gnr-img{
-      position:relative;
-      margin-top:-56.25%;
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      object-fit:cover;      /* key: no black gap */
+      object-position:center;
+      display:block;
     }
+
 
     /* Right rail cards */
 .railCard{
