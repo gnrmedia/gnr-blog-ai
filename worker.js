@@ -161,6 +161,22 @@ if (
   );
   return withCors(request, await onRequest(context));
 }
+// ------------------------------------------------------------
+// POST /api/blog/draft/asset/upload
+// (multipart file upload → Cloudflare Images → upsert https URL)
+// ------------------------------------------------------------
+if (
+  request.method === "POST" &&
+  pathname === "/api/blog/draft/asset/upload"
+) {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import(
+    "./functions/api/blog/draft/asset/upload.js"
+  );
+  return withCors(request, await onRequest(context));
+}
 
   // ------------------------------------------------------------
   // POST /api/blog/draft/delete
