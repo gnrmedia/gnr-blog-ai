@@ -411,6 +411,27 @@ const stripInternalTelemetryComments = (md) => {
         .replace(/^\s*<!--\s*eio_fingerprint:\s*[\s\S]*?-->\s*\n?/gmi, "")
         .trim();
 };
+// ============================================================
+// MARKDOWN NORMALIZATION (LOCKED)
+// Convert ordered lists ("1. ...") to "-" bullet lists.
+// Shared helper (used by generation + render + future tools).
+// ============================================================
+function normalizeOrderedListsToBullets(md) {
+  const lines = String(md || "").split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Convert "1. item" to "- item" (preserves indentation)
+    const m = line.match(/^(\s*)\d+\.\s+(.*)$/);
+    if (m) {
+      lines[i] = `${m[1]}- ${m[2]}`;
+    }
+  }
+
+  return lines.join("\n");
+}
+
 
 const visualCommentsToTokens = (md) => {
       let out = String(md || "");
@@ -1137,31 +1158,6 @@ try {
       try { bodyHtml = markdownToHtml(md); } catch (e) {
               bodyHtml = `<pre style="white-space:pre-wrap;">${escapeHtml(md)}</pre>`;
       }
-
-
-  function normalizeOrderedListsToBullets(md) {
-  const lines = String(md || "").split("\n");
-  let inNumberedRun = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Detect "1. item" style lines
-    const m = line.match(/^(\s*)\d+\.\s+(.*)$/);
-    if (m) {
-      inNumberedRun = true;
-      lines[i] = `${m[1]}- ${m[2]}`;
-      continue;
-    }
-
-    // If we were in a numbered run and hit a blank line, keep it blank (fine)
-    if (inNumberedRun && line.trim() === "") continue;
-
-    // If we hit a non-list line, end run
-    inNumberedRun = false;
-  }
-  return lines.join("\n");
-}
     
   const assets = await getDraftAssetsMap(env, draft_id);
       bodyHtml = replaceVisualTokensInHtml(bodyHtml, (kind) => {
@@ -1493,8 +1489,13 @@ if (passport.found && mpText && mpText.length >= 250) {
   const prompt = override_prompt || defaultPrompt;
       let md;
       try {
-              md = await generateMarkdownWithAI({ env, prompt, system });
-              md = normalizeOrderedListsToBullets(md);
+md = await generateMarkdownWithAI({ env, prompt, system });
+try {
+  md = normalizeOrderedListsToBullets(md);
+} catch (e) {
+  console.log("LIST_NORMALIZE_FAIL_OPEN", String(e?.message || e));
+}
+
 
       } catch (e) {
               return errorResponse(ctx, "AI generation failed", 502, { detail: String(e?.message || e) });
