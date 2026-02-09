@@ -828,16 +828,21 @@ async function autoGenerateVisualsForDraft(env, draft_id) {
                         asset_type: heroImageUrl ? "image" : "svg",
                         prompt: heroPrompt, status: "ready",
               });
-      } catch (e) {
-              console.log("AUTO_VISUALS_HERO_FAIL_OPEN", { draft_id: did, error: String(e?.message || e) });
-              await upsertDraftAssetRow(env, {
-                        draft_id: did, visual_key: "hero",
-                        image_url: svgToDataUrl(buildAbstractPanelSvg()),
-                        provider: "system", asset_type: "svg",
-                        prompt: "hero_fallback_svg_no_text", status: "ready",
-              });
-      }
-      return { ok: true, draft_id: did, generated: ["hero"] };
+} catch (e) {
+  const err = String(e?.message || e);
+  console.log("AUTO_VISUALS_HERO_FAIL_OPEN", { draft_id: did, error: err });
+
+  await upsertDraftAssetRow(env, {
+    draft_id: did, visual_key: "hero",
+    image_url: svgToDataUrl(buildAbstractPanelSvg()),
+    provider: "system", asset_type: "svg",
+    prompt: "hero_fallback_svg_no_text", status: "ready",
+  });
+
+  return { ok: false, draft_id: did, error: err, fallback: "svg" };
+}
+return { ok: true, draft_id: did, generated: ["hero"] };
+
 }
 
 // ============================================================
@@ -1552,13 +1557,22 @@ const visual_debug = {
 
 try {
   visual_debug.attempted = true;
-  if (!force) await autoGenerateVisualsForDraft(env, draft.draft_id);
-  visual_debug.auto_visuals_ok = true;
+
+  let vr = null;
+  if (!force) vr = await autoGenerateVisualsForDraft(env, draft.draft_id);
+
+  if (vr && vr.ok === false) {
+    visual_debug.auto_visuals_ok = false;
+    visual_debug.auto_visuals_error = String(vr.error || "visuals_failed_unknown");
+  } else {
+    visual_debug.auto_visuals_ok = true;
+  }
 } catch (e) {
   visual_debug.auto_visuals_ok = false;
   visual_debug.auto_visuals_error = String(e?.message || e);
   console.log("AUTO_VISUALS_FAIL_SYNC", { draft_id: draft.draft_id, error: visual_debug.auto_visuals_error });
 }
+
 
 // If NO hero row exists, force-insert a fallback hero so blog_draft_assets is never empty.
 try {
@@ -1664,14 +1678,15 @@ export async function runNowForLocation(ctx, locationid) {
   const assets = await getDraftAssetsMap(env, draft_id);
   const hero_url = String(assets?.hero || "").trim() || null;
 
-  return jsonResponse(ctx, {
-    ok: true,
-    action: "run_now_completed",
-    location_id: loc,
-    draft_id,
-    status: String(gen?.status || DRAFT_STATUS.AI_VISUALS_GENERATED),
-    hero_url,
-  });
+return jsonResponse(ctx, {
+  ok: true,
+  action: "run_now_completed",
+  location_id: loc,
+  draft_id,
+  status: String(gen?.status || DRAFT_STATUS.AI_VISUALS_GENERATED),
+  hero_url,
+  visual_debug: gen?.visual_debug || null,
+});
 }
 
 
