@@ -380,8 +380,8 @@ function buildWowReviewHtml({ token, draftMarkdown }) {
     .phoneScreen{
       background: #fff;
       border-radius: 18px;
+      overflow: hidden;
       overflow-y: auto;
-      overflow-x: hidden;
       height: min(720px, 70vh);  /* internal scroll like mobile */
       -webkit-overflow-scrolling: touch;
       border: 1px solid rgba(0,0,0,.10);
@@ -423,25 +423,73 @@ function buildWowReviewHtml({ token, draftMarkdown }) {
   line-height: 1.6;
 }
 
-/* Ensure injected render content fits inside phone viewport */
-.phoneScreen .gnr-render-root{
-  max-width: 100%;
-  margin: 0 auto;
-  padding: 14px 12px 18px;
-  overflow: hidden;
-}
-.phoneScreen img{
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
+/* ============================================================
+       PHONE SCREEN: constrain ALL rendered content to frame width
+       The server-rendered HTML has its own .gnr-wrap / .gnr-article
+       styles — these overrides force everything to fit the phone.
+    ============================================================ */
 
-/* Hero image constrained inside phone frame */
-.phoneScreen .gnr-visual.gnr-hero{
-  border-radius: 12px;
-  box-shadow: none;
-  margin: 10px 0;
-}
+    /* Every direct and nested element must respect the phone width */
+    .phoneScreen *{
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+
+    /* The server's .gnr-wrap has max-width:880px — kill it */
+    .phoneScreen .gnr-wrap{
+      max-width: 100% !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+
+    /* The server's .gnr-article has its own border-radius + shadow */
+    .phoneScreen .gnr-article{
+      border-radius: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+
+    /* Reduce the generous head/body padding for narrow phone */
+    .phoneScreen .gnr-head{
+      padding: 18px 14px 8px !important;
+    }
+    .phoneScreen .gnr-body{
+      padding: 8px 14px 18px !important;
+    }
+
+    /* Images must stay inside the padded area */
+    .phoneScreen img{
+      max-width: 100% !important;
+      height: auto !important;
+      display: block;
+    }
+
+    /* Hero: no absolute-positioning tricks, just a simple responsive image */
+    .phoneScreen .gnr-visual.gnr-hero{
+      aspect-ratio: 16 / 9;
+      position: relative;
+      border-radius: 10px !important;
+      box-shadow: none !important;
+      margin: 10px 0 !important;
+      overflow: hidden;
+    }
+    .phoneScreen .gnr-visual.gnr-hero:before{
+      display: none !important;   /* kill the padding-top spacer */
+    }
+    .phoneScreen .gnr-visual.gnr-hero img.gnr-img{
+      position: absolute;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover;
+      object-position: center;
+    }
+
+    /* Other visual blocks */
+    .phoneScreen .gnr-visual{
+      margin: 12px 0 !important;
+      border-radius: 10px !important;
+    }
 
     /* On small screens, don't force a tall "phone"; just flow normally */
     @media (max-width: 520px){
