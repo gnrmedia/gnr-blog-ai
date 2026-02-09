@@ -1597,14 +1597,20 @@ try {
   visual_debug.hero_fallback_error = String(e?.message || e);
 }
 
-// If hero still missing, FAIL the request (WOW requires a hero)
+// If hero is missing, DO NOT fail.
+// Missing hero blocks auto-continuation and requires admin to upload a hero manually.
 if (!visual_debug.hero_row_present_after) {
-  return errorResponse(ctx, "visuals_failed_no_hero_asset", 502, {
+  return jsonResponse(ctx, {
+    ok: true,
+    action: "generated_no_hero",
     draft_id: draft.draft_id,
     location_id: draft.location_id,
+    status: DRAFT_STATUS.AI_GENERATED,
+    hero_url: null,
     visual_debug,
   });
 }
+
 
 // Now and only now: mark visuals generated
 await env.GNR_MEDIA_BUSINESS_DB.prepare(`
