@@ -689,19 +689,34 @@ async function cloudflareImagesUploadBase64({ env, b64, fileNameHint }) {
 async function generateAndStoreImage({ env, prompt, size, fileNameHint }) {
   const out = await openaiGenerateImageBase64({ env, prompt, size });
 
-  // Preferred: Cloudflare Images
+  // Preferred: Cloudflare Images (durable + CDN)
   try {
     const url = await cloudflareImagesUploadBase64({
       env,
       b64: out.b64,
       fileNameHint,
     });
-    return { url, openai_url: out.imageUrl || null, storage: "cloudflare_images" };
+
+    return {
+      url,
+      openai_url: out.imageUrl || null,
+      storage: "cloudflare_images",
+    };
   } catch (e) {
-  console.log("CF_IMAGES_UPLOAD_FAIL_NO_FALLBACK", String(e?.message || e));
-  return { url: null, openai_url: out.imageUrl || null, storage: "failed" };
+    // HARD RULE: if OpenAI produced pixels, we MUST NOT drop them.
+    // Fall back to a data URL so D1 is always populated and the hero renders.
+    console.log("CF_IMAGES_UPLOAD_FAIL_FALLBACK_TO_DATAURL", String(e?.message || e));
+
+    const dataUrl = "data:image/png;base64," + String(out.b64 || "").trim();
+
+    return {
+      url: dataUrl,
+      openai_url: out.imageUrl || null,
+      storage: "data_url_fallback",
+    };
+  }
 }
-}
+
 
 
 // ============================================================
@@ -817,14 +832,28 @@ async function autoGenerateVisualsForDraft(env, draft_id) {
                         `Theme: ${title}`,
                         `Concept cues: ${subtitle}`,
                       ].join("\n");
-              const gen = await generateAndStoreImage({ env, prompt: heroPrompt, size: "1536x1024", fileNameHint: "hero-" + did + ".png" });
-              const heroImageUrl = gen?.url ? String(gen.url).trim() : "";
+const gen = await generateAndStoreImage({
+  env,
+  prompt: heroPrompt,
+  size: "1536x1024",
+  fileNameHint: "hero-" + did + ".png"
+});
+
+const heroImageUrl = gen?.url ? String(gen.url).trim() : "";
+
+console.log("HERO_IMAGE_STORED", {
+  draft_id: did,
+  storage: gen?.storage || null,
+  url_prefix: heroImageUrl.slice(0, 30)
+});
+
 if (!heroImageUrl) {
   // IMPORTANT:
   // Do NOT insert any hero asset if AI image generation fails.
   // Missing hero is intentional and handled by renderer + admin workflow.
   return { ok: false, draft_id: did, error: "hero_image_generation_failed" };
 }
+
 
 await upsertDraftAssetRow(env, {
   draft_id: did,
