@@ -390,7 +390,7 @@ function buildJs() {
     "      if(futureTopics) futureTopics.value = (row && row.client_topic_suggestions) ? String(row.client_topic_suggestions) : (futureTopics.value||'');",
     "",
     "      // Lock UI for non-pending states",
-    "      var isPending = (status === 'PENDING' || status === 'ISSUED' || status === 'AI_VISUALS_GENERATED');",
+    "      var isPending = (status === 'PENDING' || status === 'ISSUED' || status === 'AI_GENERATED' || status === 'AI_VISUALS_GENERATED');",
     "      if(!isPending){",
     "        disableAll();",
     "        if(elActionTitle) elActionTitle.textContent = 'This link is not active';",
