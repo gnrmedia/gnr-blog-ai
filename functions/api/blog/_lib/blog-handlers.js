@@ -859,22 +859,22 @@ console.log("HERO_IMAGE_STORED", {
 
 
 if (!heroImageUrl) {
-  // IMPORTANT:
-  // Do NOT insert any hero asset if AI image generation fails.
-  // Missing hero is intentional and handled by renderer + admin workflow.
-  return { ok: false, draft_id: did, error: "hero_image_generation_failed" };
+  // No usable image at all — fail loudly
+  throw new Error("hero_image_generation_failed");
 }
-
 
 await upsertDraftAssetRow(env, {
   draft_id: did,
   visual_key: "hero",
   image_url: heroImageUrl,
-  provider: "openai+cloudflare_images",
+  provider: gen?.storage || "openai_fallback",
   asset_type: "image",
   prompt: heroPrompt,
   status: "ready",
 });
+
+return { ok: true, draft_id: did, storage: gen?.storage || null };
+
 
 } 
 catch (e) {
