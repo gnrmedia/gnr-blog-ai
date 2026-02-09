@@ -1,6 +1,6 @@
 // Repo: gnr-blog-ai
 // File: functions/api/blog/auto/run-location.js
-import { requireAdmin, runNowForLocation } from "../../blog-handlers.js";
+import { requireAdmin, runNowForLocation } from "../_lib/blog-handlers.js";
 
 // POST /api/blog/auto/run-location  { location_id: "..."}
 export async function onRequest(context) {
