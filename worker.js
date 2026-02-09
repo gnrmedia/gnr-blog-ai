@@ -259,6 +259,16 @@ if (request.method === "GET" && pathname === "/assets/review-ui.js") {
   return onRequest(context); // JS response
 }
 
+// ------------------------------------------------------------
+// POST /api/blog/auto/run-location
+// ------------------------------------------------------------
+if (request.method === "POST" && pathname === "/api/blog/auto/run-location") {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import("./functions/api/blog/auto/run-location.js");
+  return withCors(request, await onRequest(context));
+}
 
 
     
