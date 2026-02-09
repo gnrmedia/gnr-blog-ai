@@ -698,11 +698,9 @@ async function generateAndStoreImage({ env, prompt, size, fileNameHint }) {
     });
     return { url, openai_url: out.imageUrl || null, storage: "cloudflare_images" };
   } catch (e) {
-    // Fail-open: store inline PNG so the hero still persists in D1
-    console.log("CF_IMAGES_UPLOAD_FAIL_OPEN_INLINE", String(e?.message || e));
-    const inline = "data:image/png;base64," + String(out.b64 || "").trim();
-    return { url: inline, openai_url: out.imageUrl || null, storage: "inline_base64" };
-  }
+  console.log("CF_IMAGES_UPLOAD_FAIL_NO_FALLBACK", String(e?.message || e));
+  return { url: null, openai_url: out.imageUrl || null, storage: "failed" };
+}
 }
 
 
@@ -828,21 +826,14 @@ async function autoGenerateVisualsForDraft(env, draft_id) {
                         asset_type: heroImageUrl ? "image" : "svg",
                         prompt: heroPrompt, status: "ready",
               });
-} catch (e) {
+} 
+catch (e) {
   const err = String(e?.message || e);
-  console.log("AUTO_VISUALS_HERO_FAIL_OPEN", { draft_id: did, error: err });
+  console.log("AUTO_VISUALS_HERO_FAIL_NO_FALLBACK", { draft_id: did, error: err });
 
-  await upsertDraftAssetRow(env, {
-    draft_id: did, visual_key: "hero",
-    image_url: svgToDataUrl(buildAbstractPanelSvg()),
-    provider: "system", asset_type: "svg",
-    prompt: "hero_fallback_svg_no_text", status: "ready",
-  });
-
-  return { ok: false, draft_id: did, error: err, fallback: "svg" };
+  // IMPORTANT: do NOT insert any hero asset on failure
+  return { ok: false, draft_id: did, error: err };
 }
-return { ok: true, draft_id: did, generated: ["hero"] };
-
 }
 
 // ============================================================
@@ -1578,26 +1569,9 @@ try {
 try {
   visual_debug.hero_row_present_after = await hasHeroAsset(env, draft.draft_id);
 
-  if (!visual_debug.hero_row_present_after) {
-    const fallbackUrl = svgToDataUrl(buildAbstractPanelSvg());
-    const out = await upsertDraftAssetRow(env, {
-      draft_id: draft.draft_id,
-      visual_key: "hero",
-      image_url: fallbackUrl,
-      provider: "system",
-      asset_type: "svg",
-      prompt: "hero_fallback_svg_no_text",
-      status: "ready",
-    });
+// Do nothing.
+// Missing hero is intentional and handled by renderer + admin workflow.
 
-    if (!out?.ok) {
-      visual_debug.hero_fallback_error = String(out?.error || "fallback_upsert_failed");
-    } else {
-      visual_debug.hero_fallback_inserted = true;
-    }
-
-    visual_debug.hero_row_present_after = await hasHeroAsset(env, draft.draft_id);
-  }
 } catch (e) {
   visual_debug.hero_fallback_error = String(e?.message || e);
 }
