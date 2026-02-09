@@ -1330,14 +1330,27 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
     const assetsAfter = await getDraftAssetsMap(env, draft.draft_id);
   const hero_url = String(assetsAfter?.hero || "").trim() || null;
 
+  // Always return visual_debug so Admin UI can see why hero is missing.
+  const visual_debug = {
+    attempted: !heroExists,                 // true if we tried to fix visuals
+    auto_visuals_ok: heroExists ? true : null,
+    auto_visuals_error: null,
+    hero_row_present_after: !!hero_url,
+    storage: hero_url
+      ? (hero_url.startsWith("https://imagedelivery.net/") ? "cloudflare_images" : (hero_url.startsWith("data:image/") ? "data_url" : "unknown"))
+      : null
+  };
+
   return jsonResponse(ctx, {
-        ok: true,
-        action: "generated",
-        draft_id: draft.draft_id,
-        location_id: draft.location_id,
-        status: DRAFT_STATUS.AI_VISUALS_GENERATED,
-        hero_url,
+    ok: true,
+    action: "idempotent_existing_ai_generated",
+    draft_id: draft.draft_id,
+    location_id: draft.location_id,
+    status: DRAFT_STATUS.AI_VISUALS_GENERATED,
+    hero_url,
+    visual_debug,
   });
+
 
   }
 
@@ -1721,7 +1734,7 @@ return jsonResponse(ctx, {
   draft_id,
   status: String(gen?.status || DRAFT_STATUS.AI_VISUALS_GENERATED),
   hero_url,
-  visual_debug: gen?.visual_debug || null,
+    visual_debug: gen?.visual_debug || gen?.visual_debug === null ? gen?.visual_debug : (gen?.visual_debug ?? null),
 });
 }
 
