@@ -702,27 +702,23 @@ async function generateAndStoreImage({ env, prompt, size, fileNameHint }) {
       openai_url: out.imageUrl || null,
       storage: "cloudflare_images",
     };
-  } catch (e) {
-    // HARD RULE: if OpenAI produced pixels, we MUST NOT drop them.
-    // Fall back to a data URL so D1 is always populated and the hero renders.
-    console.log("CF_IMAGES_UPLOAD_FAIL_FALLBACK_TO_DATAURL", String(e?.message || e));
+  } 
+  
+  catch (e) {
+  console.log("CF_IMAGES_UPLOAD_FAILED", {
+    error: String(e?.message || e),
+  });
 
-const b64 = String(out?.b64 || "").trim();
-if (!b64) {
-  return { url: null, openai_url: out?.imageUrl || null, storage: "failed_no_b64" };
+  // HARD RULE:
+  // We MUST NOT return data:image URLs.
+  // If storage fails, return null and let Admin UI handle manual upload.
+  return {
+    url: null,
+    openai_url: out.imageUrl || null,
+    storage: "cloudflare_upload_failed",
+  };
 }
-
-const dataUrl = "data:image/png;base64," + b64;
-
-return {
-  url: dataUrl,
-  openai_url: out.imageUrl || null,
-  storage: "data_url_fallback",
-};
-
-  }
 }
-
 
 
 // ============================================================
