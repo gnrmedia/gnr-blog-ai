@@ -819,13 +819,23 @@ async function autoGenerateVisualsForDraft(env, draft_id) {
                       ].join("\n");
               const gen = await generateAndStoreImage({ env, prompt: heroPrompt, size: "1536x1024", fileNameHint: "hero-" + did + ".png" });
               const heroImageUrl = gen?.url ? String(gen.url).trim() : "";
-              await upsertDraftAssetRow(env, {
-                        draft_id: did, visual_key: "hero",
-                        image_url: heroImageUrl || svgToDataUrl(buildAbstractPanelSvg()),
-                        provider: heroImageUrl ? "openai+cloudflare_images" : "system",
-                        asset_type: heroImageUrl ? "image" : "svg",
-                        prompt: heroPrompt, status: "ready",
-              });
+if (!heroImageUrl) {
+  // IMPORTANT:
+  // Do NOT insert any hero asset if AI image generation fails.
+  // Missing hero is intentional and handled by renderer + admin workflow.
+  return { ok: false, draft_id: did, error: "hero_image_generation_failed" };
+}
+
+await upsertDraftAssetRow(env, {
+  draft_id: did,
+  visual_key: "hero",
+  image_url: heroImageUrl,
+  provider: "openai+cloudflare_images",
+  asset_type: "image",
+  prompt: heroPrompt,
+  status: "ready",
+});
+
 } 
 catch (e) {
   const err = String(e?.message || e);
