@@ -1506,12 +1506,26 @@ try {
         + `<!-- eio_fingerprint: ${eioFingerprintJson} -->\n\n` + md.trim() + "\n";
       const finalHtml = markdownToHtml(stripInternalTelemetryComments(finalMd));
 
-  await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-      UPDATE blog_drafts SET content_markdown = ?, content_html = ?, status = ?,
-            context_quality = ?, context_quality_reason = ?, editorial_intelligence_json = ?,
-                  updated_at = datetime('now') WHERE draft_id = ?
-                    - ).bind(finalMd, finalHtml, DRAFT_STATUS.AI_VISUALS_GENERATED, context_quality, context_quality_reason, eioJson, draft.draft_id).run();
-+ ).bind(finalMd, finalHtml, DRAFT_STATUS.AI_GENERATED, context_quality, context_quality_reason, eioJson, draft.draft_id).run();
+await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+  UPDATE blog_drafts
+     SET content_markdown = ?,
+         content_html = ?,
+         status = ?,
+         context_quality = ?,
+         context_quality_reason = ?,
+         editorial_intelligence_json = ?,
+         updated_at = datetime('now')
+   WHERE draft_id = ?
+`).bind(
+  finalMd,
+  finalHtml,
+  DRAFT_STATUS.AI_GENERATED,
+  context_quality,
+  context_quality_reason,
+  eioJson,
+  draft.draft_id
+).run();
+
 
   // Persist fingerprint (fail-open)
   try {
