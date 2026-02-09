@@ -704,21 +704,29 @@ async function generateAndStoreImage({ env, prompt, size, fileNameHint }) {
     };
   } 
   
-  catch (e) {
-  console.log("CF_IMAGES_UPLOAD_FAILED", {
+catch (e) {
+  console.log("CF_IMAGES_UPLOAD_FAILED_FALLBACK_TO_DATAURL", {
     error: String(e?.message || e),
   });
 
-  // HARD RULE:
-  // We MUST NOT return data:image URLs.
-  // If storage fails, return null and let Admin UI handle manual upload.
+  // HARD RULE (updated): if OpenAI returned pixels (b64), we MUST NOT drop them.
+  // Fall back to a data URL so we always persist hero in D1.
+  const b64 = String(out?.b64 || "").trim();
+  if (!b64) {
+    return {
+      url: null,
+      openai_url: out?.imageUrl || null,
+      storage: "failed_no_b64",
+    };
+  }
+
   return {
-    url: null,
+    url: "data:image/png;base64," + b64,
     openai_url: out.imageUrl || null,
-    storage: "cloudflare_upload_failed",
+    storage: "data_url_fallback",
   };
 }
-}
+
 
 
 // ============================================================
