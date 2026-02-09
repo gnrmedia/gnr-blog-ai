@@ -1493,18 +1493,30 @@ export async function runNowForLocation(ctx, locationid) {
   const loc = normaliseLocationId(locationid);
   if (!loc) return errorResponse(ctx, "location_id required", 400);
 
-  // 1) Create draft
-  const created = await createDraftForLocation(ctx, loc);
-  if (created instanceof Response) return created;
+  // Helper: unwrap a jsonResponse() Response into an object
+  async function unwrapJson(resp) {
+    if (!(resp instanceof Response)) return resp;
+    const txt = await resp.text().catch(() => "");
+    try { return JSON.parse(txt || "{}"); } catch (_) { return { ok: false, raw: txt }; }
+  }
 
-  const draft_id = String(created?.draft_id || "").trim();
-  if (!draft_id) {
+  // 1) Create draft
+  const createdResp = await createDraftForLocation(ctx, loc);
+  const created = await unwrapJson(createdResp);
+
+  if (!created?.ok || !created?.draft_id) {
     return errorResponse(ctx, "run_now_failed_create_draft", 500, { created });
   }
 
-  // 2) Generate AI for the draft (this path already persists visuals via D1 upserts)
-  const gen = await generateAiForDraft(ctx, draft_id, { force: false, override_prompt: null });
-  if (gen instanceof Response) return gen;
+  const draft_id = String(created.draft_id || "").trim();
+
+  // 2) Generate AI for the draft (text + visuals)
+  const genResp = await generateAiForDraft(ctx, draft_id, { force: false, override_prompt: null });
+  const gen = await unwrapJson(genResp);
+
+  if (!gen?.ok) {
+    return errorResponse(ctx, "run_now_failed_generate_ai", 502, { draft_id, gen });
+  }
 
   // 3) Read back hero_url from saved assets (D1) so UI can display it
   const assets = await getDraftAssetsMap(env, draft_id);
@@ -1515,9 +1527,11 @@ export async function runNowForLocation(ctx, locationid) {
     action: "run_now_completed",
     location_id: loc,
     draft_id,
+    status: String(gen?.status || DRAFT_STATUS.AI_VISUALS_GENERATED),
     hero_url,
   });
 }
+
 
 export async function listDraftsForLocation(ctx, locationid, limit = 20) {
   const { env } = ctx;
