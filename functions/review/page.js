@@ -385,6 +385,10 @@ function buildWowReviewHtml({ token, draftMarkdown }) {
       height: min(720px, 70vh);  /* internal scroll like mobile */
       -webkit-overflow-scrolling: touch;
       border: 1px solid rgba(0,0,0,.10);
+
+      /* FIX: keep content below the notch overlay */
+      padding-top: 22px;
+      box-sizing: border-box;
     }
 
     /* --- Mobile preview readability overrides (ONLY inside phone) --- */
