@@ -1524,11 +1524,6 @@ try {
           console.log("FINGERPRINT_PERSIST_FAIL_OPEN", { draft_id: draft.draft_id, error: String(e?.message || e) });
   }
 
-  // Auto-generate visuals (fail-open)
-    // Auto-generate visuals (fail-open)
-  // Cost rule: force=true => TEXT ONLY (skip images)
-  try {
-          if (!force) await autoGenerateVisualsForDraft(env, draft.draft_id);
  // ----------------------------
 // VISUALS (must not be silent)
 // ----------------------------
