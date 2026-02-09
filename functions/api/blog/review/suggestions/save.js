@@ -84,9 +84,9 @@ export async function onRequest(context) {
       VALUES
         (?,          ?,              ?,           ?,               datetime('now'), ?)
       ON CONFLICT(location_id) DO UPDATE SET
-        follow_emphasis = excluded.follow_emphasis,
-        follow_avoid = excluded.follow_avoid,
-        topic_suggestions = excluded.topic_suggestions,
+        follow_emphasis = CASE WHEN ? = 0 THEN follow_emphasis ELSE excluded.follow_emphasis END,
+        follow_avoid = CASE WHEN ? = 0 THEN follow_avoid ELSE excluded.follow_avoid END,
+        topic_suggestions = CASE WHEN ? = 0 THEN topic_suggestions ELSE excluded.topic_suggestions END,
         updated_at = datetime('now'),
         updated_by_review_id = excluded.updated_by_review_id
     `).bind(
@@ -94,8 +94,12 @@ export async function onRequest(context) {
       followEmphasisDb,
       followAvoidDb,
       suggestionsDb,
-      String(review.review_id || "")
+      String(review.review_id || ""),
+      followEmphasisProvided ? 1 : 0,
+      followAvoidProvided ? 1 : 0,
+      suggestionsProvided ? 1 : 0
     ).run();
+
   } catch (_) {}
 
   return json({ ok: true, action: "guidance_saved", review_id: review.review_id }, 200);

@@ -1899,21 +1899,62 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
   const status = "ISSUED";
 
   // Write
-  await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-    INSERT INTO blog_draft_reviews (
-      review_id, draft_id, location_id, token_hash, expires_at, status, client_email, created_at
-    ) VALUES (
-      ?, ?, ?, ?, datetime('now', ?), ?, ?, datetime('now')
-    )
-  `).bind(
-    review_id,
-    draft_id,
-    String(draft.location_id || ""),
-    token_hash,
-    `+${ttlHours} hours`,
-    status,
-    email
-  ).run();
+  // Prefill guidance from sticky table (location-level)
+  let sticky = null;
+  try {
+    sticky = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      SELECT follow_emphasis, follow_avoid, topic_suggestions
+        FROM blog_client_guidance
+       WHERE location_id LIKE ? AND length(location_id) = ?
+       LIMIT 1
+    `).bind(String(draft.location_id || ""), String(draft.location_id || "").length).first();
+  } catch (_) { sticky = null; }
+
+  const g_follow_emphasis = sticky && String(sticky.follow_emphasis || "").trim() ? String(sticky.follow_emphasis).trim() : null;
+  const g_follow_avoid = sticky && String(sticky.follow_avoid || "").trim() ? String(sticky.follow_avoid).trim() : null;
+  const g_topics = sticky && String(sticky.topic_suggestions || "").trim() ? String(sticky.topic_suggestions).trim() : null;
+
+  // Persist review row (schema-tolerant: try with guidance columns, fall back if schema is older)
+  try {
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      INSERT INTO blog_draft_reviews (
+        review_id, draft_id, location_id, token_hash, expires_at, status, client_email, created_at,
+        follow_emphasis, follow_avoid, client_topic_suggestions
+      ) VALUES (
+        ?, ?, ?, ?, datetime('now', ?), ?, ?, datetime('now'),
+        ?, ?, ?
+      )
+    `).bind(
+      review_id,
+      draft_id,
+      String(draft.location_id || ""),
+      token_hash,
+      `+${ttlHours} hours`,
+      status,
+      email,
+      g_follow_emphasis,
+      g_follow_avoid,
+      g_topics
+    ).run();
+  } catch (e) {
+    // Fallback: older schema without guidance cols
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      INSERT INTO blog_draft_reviews (
+        review_id, draft_id, location_id, token_hash, expires_at, status, client_email, created_at
+      ) VALUES (
+        ?, ?, ?, ?, datetime('now', ?), ?, ?, datetime('now')
+      )
+    `).bind(
+      review_id,
+      draft_id,
+      String(draft.location_id || ""),
+      token_hash,
+      `+${ttlHours} hours`,
+      status,
+      email
+    ).run();
+  }
+
 
   // Build review URL
   // Prefer explicit override, otherwise use the calling Admin UI Origin
@@ -2221,6 +2262,25 @@ const draft = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
   // redact token_hash
   const safe = { ...row };
   delete safe.token_hash;
+  // If review row has no guidance yet, fall back to sticky location guidance (cross-draft canonical)
+  try {
+    const g = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      SELECT follow_emphasis, follow_avoid, topic_suggestions
+        FROM blog_client_guidance
+       WHERE location_id LIKE ? AND length(location_id) = ?
+       LIMIT 1
+    `).bind(String(safe.location_id || ""), String(safe.location_id || "").length).first();
+
+    if (g) {
+      const ge = String(g.follow_emphasis || "").trim();
+      const ga = String(g.follow_avoid || "").trim();
+      const gt = String(g.topic_suggestions || "").trim();
+
+      if (!String(safe.follow_emphasis || "").trim() && ge) safe.follow_emphasis = ge;
+      if (!String(safe.follow_avoid || "").trim() && ga) safe.follow_avoid = ga;
+      if (!String(safe.client_topic_suggestions || "").trim() && gt) safe.client_topic_suggestions = gt;
+    }
+  } catch (_) {}
 
 let draft_markdown = String(draft?.content_markdown || "");
 
