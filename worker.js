@@ -259,6 +259,20 @@ if (request.method === "POST" && pathname === "/api/blog/review/create") {
                 return withCors(request, await onRequest(context));
         }
 
+
+// ------------------------------------------------------------
+// POST /api/blog/review/visuals/upload
+// (multipart file upload → Cloudflare Images → upsert https URL)
+// ------------------------------------------------------------
+if (
+  request.method === "POST" &&
+  pathname === "/api/blog/review/visuals/upload"
+) {
+  const { onRequest } = await import(
+    "./functions/api/blog/review/visuals/upload.js"
+  );
+  return withCors(request, await onRequest(context));
+}
 // ------------------------------------------------------------
 // GET /review (PUBLIC client review page)
 // ------------------------------------------------------------
