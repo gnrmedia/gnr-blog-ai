@@ -707,13 +707,19 @@ async function generateAndStoreImage({ env, prompt, size, fileNameHint }) {
     // Fall back to a data URL so D1 is always populated and the hero renders.
     console.log("CF_IMAGES_UPLOAD_FAIL_FALLBACK_TO_DATAURL", String(e?.message || e));
 
-    const dataUrl = "data:image/png;base64," + String(out.b64 || "").trim();
+const b64 = String(out?.b64 || "").trim();
+if (!b64) {
+  return { url: null, openai_url: out?.imageUrl || null, storage: "failed_no_b64" };
+}
 
-    return {
-      url: dataUrl,
-      openai_url: out.imageUrl || null,
-      storage: "data_url_fallback",
-    };
+const dataUrl = "data:image/png;base64," + b64;
+
+return {
+  url: dataUrl,
+  openai_url: out.imageUrl || null,
+  storage: "data_url_fallback",
+};
+
   }
 }
 
@@ -844,8 +850,9 @@ const heroImageUrl = gen?.url ? String(gen.url).trim() : "";
 console.log("HERO_IMAGE_STORED", {
   draft_id: did,
   storage: gen?.storage || null,
-  url_prefix: heroImageUrl.slice(0, 30)
+  url_prefix: heroImageUrl ? heroImageUrl.slice(0, 30) : null,
 });
+
 
 if (!heroImageUrl) {
   // IMPORTANT:
@@ -1734,7 +1741,7 @@ return jsonResponse(ctx, {
   draft_id,
   status: String(gen?.status || DRAFT_STATUS.AI_VISUALS_GENERATED),
   hero_url,
-    visual_debug: gen?.visual_debug || gen?.visual_debug === null ? gen?.visual_debug : (gen?.visual_debug ?? null),
+    visual_debug: (gen && Object.prototype.hasOwnProperty.call(gen, "visual_debug")) ? gen.visual_debug : null,
 });
 }
 
