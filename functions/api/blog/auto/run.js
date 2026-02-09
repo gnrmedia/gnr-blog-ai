@@ -1,4 +1,4 @@
-import { requireAdmin, runAutoCadence } from "../../blog-handlers.js";
+import { requireAdmin, runAutoCadence } from "../_lib/blog-handlers.js";
 
 export async function onRequest(context) {
   const { request } = context;
