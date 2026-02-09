@@ -14,12 +14,16 @@ async function uploadToCloudflareImages({ env, bytes, contentType, fileName }) {
   const hash = String(env.CF_IMAGES_DELIVERY_HASH || "").trim();
   if (!hash) throw new Error("Missing CF_IMAGES_DELIVERY_HASH");
 
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([bytes], { type: contentType || "application/octet-stream" }),
-    String(fileName || "upload.png")
-  );
+const form = new FormData();
+form.append(
+  "file",
+  new Blob([bytes], { type: contentType || "application/octet-stream" }),
+  String(fileName || "upload.png")
+);
+
+// 🔑 CRITICAL: make images public (no signed URLs)
+form.append("requireSignedURLs", "false");
+
 
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/images/v1`;
   const res = await fetch(url, {
