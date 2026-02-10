@@ -75,9 +75,9 @@ WHERE review_id=?
 
   // Close other pending review links for same draft (prevents zombies)
   await db.prepare(`
-UPDATE blog_draft_reviews
-SET status='SUPERSEDED', decided_at=datetime('now'), updated_at=datetime('now')
-WHERE draft_id = ? AND review_id <> ? AND status = 'PENDING'
+    UPDATE blog_draft_reviews
+    SET status='SUPERSEDED', decided_at=datetime('now'), updated_at=datetime('now')
+    WHERE draft_id = ?
       AND review_id <> ?
       AND status = 'PENDING'
   `).bind(review.draft_id, review.review_id).run();
@@ -114,21 +114,28 @@ WHERE draft_id = ? AND review_id <> ? AND status = 'PENDING'
 try {
   if (ctx && typeof ctx.waitUntil === "function") {
     ctx.waitUntil((async () => {
-      await enqueuePublishJobsForDraft({
-        db,
-        draft_id: review.draft_id,
-        location_id: review.location_id
-      });
+      try {
+        await enqueuePublishJobsForDraft({
+          db,
+          draft_id: review.draft_id,
+          location_id: review.location_id
+        });
 
-      // Best-effort immediate processing (fail-open)
-await processQueuedPublishJobsForDraft({
-  db,
-  env,
-  draft_id: review.draft_id,
-  location_id: review.location_id
-});
-
+        await processQueuedPublishJobsForDraft({
+          db,
+          env,
+          draft_id: review.draft_id,
+          location_id: review.location_id
+        });
+      } catch (e) {
+        console.error(
+          "PUBLISH_ON_ACCEPT_FAILED",
+          review.draft_id,
+          String(e && e.message ? e.message : e)
+        );
+      }
     })());
+
   }
 } catch (_) {}
 
