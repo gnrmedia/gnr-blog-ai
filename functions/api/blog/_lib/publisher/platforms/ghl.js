@@ -67,6 +67,14 @@ const tokenFromCfg = await decryptTokenIdFailOpen(env, cfg.token_id_enc);
 // Fallback: global secret (legacy)
 const tokenId = String(tokenFromCfg || env.GHL_BLOG_TOKEN_ID || "").trim();
 
+console.log("GHL_TOKEN_DIAGNOSTIC", {
+  has_token_id_enc: !!String(cfg.token_id_enc || "").trim(),
+  decrypt_success: !!tokenFromCfg,
+  token_length: tokenId.length,
+  source: tokenFromCfg ? "D1.token_id_enc" : "ENV.GHL_BLOG_TOKEN_ID"
+});
+
+
 if (!tokenId) throw new Error("missing_token_id");
 
 
