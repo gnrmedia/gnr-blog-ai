@@ -12,6 +12,18 @@ export async function publishToGhl({ db, env, job }) {
   if (!target) throw new Error("publish_target_missing");
 
   const cfg = safeJson(target.config_json);
+  // -------------------------
+// Canonical defaults mapping
+// -------------------------
+const authorId =
+  (String(cfg.author || "").trim()) ||
+  (String(cfg.default_author_id || "").trim()) ||
+  null;
+
+const categories =
+  Array.isArray(cfg.categories) ? cfg.categories :
+  (String(cfg.default_category_id || "").trim() ? [String(cfg.default_category_id).trim()] : []);
+
   const blog_id = String(cfg.blog_id || "").trim();
   if (!blog_id) throw new Error("ghl_blog_id_missing");
 
@@ -118,7 +130,7 @@ const updateResp = await fetch(updateUrl, {
     Version: "2021-07-28",
   },
 body: JSON.stringify({
-  categories: cfg.categories || [],
+  categories,
   tags: cfg.tags || [],
   archived: false,
   type: "manual",
@@ -128,12 +140,16 @@ body: JSON.stringify({
   title: payload.title,
   description: payload.description,
   urlSlug: cfg.urlSlug || "",
-  author: cfg.author || null,
+  author: authorId,
   canonicalLink: cfg.canonicalLink || null,
   publishedAt: new Date().toISOString(),
   scheduledAt: null,
   imageAltText: cfg.imageAltText || payload.title,
   imageUrl: cfg.imageUrl || null,
+
+  // Populate editor + renderer
+  rawHTML: html,
+}),
 
   // 🔑 REQUIRED by GHL to persist rawHTML
   externalFonts: [],
@@ -142,11 +158,7 @@ body: JSON.stringify({
   readTimeInMinutes: 0,
   wordCount: html.split(/\s+/).length,
   isAutoSave: false,
-
-  rawHTML: html,
-}),
-
-});
+})
 
 const updateText = await updateResp.text();
 if (!updateResp.ok) {
