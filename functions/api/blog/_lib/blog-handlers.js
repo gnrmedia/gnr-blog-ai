@@ -66,10 +66,12 @@ const extractFirstJsonObject = (txt) => {
 // ============================================================
 const CORS_ALLOWED_ORIGINS = new Set([
       "https://admin.gnrmedia.global",
+      "https://agency.gnrmedia.global",
       "https://gnr-admin.pages.dev",
       "http://localhost:8788",
       "http://localhost:3000",
     ]);
+
 
 export function corsHeaders(context) {
       const req = (context && context.request) ? context.request : context;
