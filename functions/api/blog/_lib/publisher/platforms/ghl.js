@@ -96,66 +96,54 @@ if (!external_id) {
 }
 
 
-
 // ------------------------------------------------------------
 // STEP B — UPDATE POST WITH FULL CONTENT (PUT)
-// DevTools verified endpoint:
-// PUT https://services.leadconnectorhq.com/blogs/posts/{postId}
 // ------------------------------------------------------------
 
-const updateResp = await fetch(
-  `https://services.leadconnectorhq.com/blogs/posts/${external_id}`,
-  {
-    method: "PUT",
+const html = String(draft.content_html || "").trim();
+if (!html) throw new Error("ghl_update_aborted_empty_html");
+
+const updateUrl = `https://services.leadconnectorhq.com/blogs/posts/${external_id}`;
+
+const updateResp = await fetch(updateUrl, {
+  method: "PUT",
   headers: {
-  accept: "application/json, text/plain, */*",
-  "content-type": "application/json",
-  channel: "APP",
-  source: "WEB_USER",
-  "token-id": tokenId,
-  Version: "2021-07-28",
-},
+    accept: "application/json, text/plain, */*",
+    "content-type": "application/json",
+    channel: "APP",
+    source: "WEB_USER",
+    "token-id": tokenId,
+    Version: "2021-07-28",
+  },
+  body: JSON.stringify({
+    categories: cfg.categories || [],
+    tags: cfg.tags || [],
+    archived: false,
+    type: "manual",
+    status: "PUBLISHED",
+    locationId: payload.locationId,
+    blogId: payload.blogId,
+    title: payload.title,
+    description: payload.description,
+    urlSlug: cfg.urlSlug || "",
+    author: cfg.author || null,
+    canonicalLink: cfg.canonicalLink || null,
+    publishedAt: new Date().toISOString(),
+    scheduledAt: null,
+    imageAltText: cfg.imageAltText || payload.title,
+    imageUrl: cfg.imageUrl || null,
 
- const html = String(draft.content_html || "").trim();
-
-if (!html) {
-  throw new Error("ghl_update_aborted_empty_html");
-}
-
-body: JSON.stringify({
-  categories: cfg.categories || [],
-  tags: cfg.tags || [],
-  archived: false,
-  type: "manual",
-  status: "PUBLISHED",
-  locationId: payload.locationId,
-  blogId: payload.blogId,
-  title: payload.title,
-  description: payload.description,
-  urlSlug: cfg.urlSlug || "",
-  author: cfg.author || null,
-  canonicalLink: cfg.canonicalLink || null,
-  publishedAt: new Date().toISOString(),
-  scheduledAt: null,
-  imageAltText: cfg.imageAltText || payload.title,
-  imageUrl: cfg.imageUrl || null,
-
-  // 🔑 REQUIRED FOR EDITOR
-  content: html,
-
-  // 🔑 REQUIRED FOR RENDERER
-  rawHTML: html
-})
-,
-  }
-);
+    // Populate editor + renderer
+    content: html,
+    rawHTML: html,
+  }),
+});
 
 const updateText = await updateResp.text();
 if (!updateResp.ok) {
-  throw new Error(
-    `ghl_update_failed_${updateResp.status}: ${updateText.slice(0, 300)}`
-  );
+  throw new Error(`ghl_update_failed_${updateResp.status}: ${updateText.slice(0, 300)}`);
 }
+
 
 
 // Best-effort published URL template (optional)
