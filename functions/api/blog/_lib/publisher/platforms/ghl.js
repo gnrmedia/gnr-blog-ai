@@ -129,36 +129,37 @@ const updateResp = await fetch(updateUrl, {
     "token-id": tokenId,
     Version: "2021-07-28",
   },
-body: JSON.stringify({
-  categories,
-  tags: cfg.tags || [],
-  archived: false,
-  type: "manual",
-  status: "PUBLISHED",
-  locationId: payload.locationId,
-  blogId: payload.blogId,
-  title: payload.title,
-  description: payload.description,
-  urlSlug: cfg.urlSlug || "",
-  author: authorId,
-  canonicalLink: cfg.canonicalLink || null,
-  publishedAt: new Date().toISOString(),
-  scheduledAt: null,
-  imageAltText: cfg.imageAltText || payload.title,
-  imageUrl: cfg.imageUrl || null,
+  body: JSON.stringify({
+    categories,
+    tags: cfg.tags || [],
+    archived: false,
+    type: "manual",
+    status: "PUBLISHED",
+    locationId: payload.locationId,
+    blogId: payload.blogId,
+    title: payload.title,
+    description: payload.description,
+    urlSlug: cfg.urlSlug || "",
+    author: authorId,
+    canonicalLink: cfg.canonicalLink || null,
+    publishedAt: new Date().toISOString(),
+    scheduledAt: null,
+    imageAltText: cfg.imageAltText || payload.title,
+    imageUrl: cfg.imageUrl || null,
 
-  // Populate editor + renderer
-  rawHTML: html,
-}),
+    // ✅ REQUIRED / UI-aligned
+    externalFonts: [],
 
-  // 🔑 REQUIRED by GHL to persist rawHTML
-  externalFonts: [],
+    // Optional but UI-aligned
+    readTimeInMinutes: 0,
+    wordCount: html.split(/\s+/).filter(Boolean).length,
+    isAutoSave: false,
 
-  // Optional but harmless (UI sends them)
-  readTimeInMinutes: 0,
-  wordCount: html.split(/\s+/).length,
-  isAutoSave: false,
-})
+    // Content payload
+    rawHTML: html,
+  }),
+});
+
 
 const updateText = await updateResp.text();
 if (!updateResp.ok) {
