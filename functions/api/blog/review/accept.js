@@ -88,15 +88,25 @@ WHERE review_id=?
     const finalMd = savedMd.endsWith("\n") ? savedMd : (savedMd + "\n");
     const finalHtml = markdownToHtml(stripInternalTelemetryComments(finalMd));
 
+    // Update canonical title from first H1 (prevents "Draft article for ..." leaking to publish surfaces)
+    let canonicalTitle = null;
+    try {
+      const h1Line = finalMd.split("\n").find((l) => /^#\s+/.test(l)) || "";
+      const h1 = h1Line ? h1Line.replace(/^#\s+/, "").trim() : "";
+      if (h1) canonicalTitle = h1;
+    } catch (_) {}
+
     await db.prepare(`
       UPDATE blog_drafts
       SET
+        title = COALESCE(NULLIF(?, ''), title),
         content_markdown = ?,
         content_html = ?,
         updated_at = datetime('now')
       WHERE draft_id = ?
-    `).bind(finalMd, finalHtml, review.draft_id).run();
+    `).bind(canonicalTitle, finalMd, finalHtml, review.draft_id).run();
   }
+
 
   // Approve draft
   await db.prepare(`
