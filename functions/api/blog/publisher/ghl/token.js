@@ -39,17 +39,21 @@ async function encryptTokenId(env, token) {
 export async function onRequest(context) {
   const { env, request } = context;
 
-  // Admin auth
+  // CORS (must run BEFORE auth for preflight)
+  const cors = corsHeaders(context);
+
+  // Preflight must bypass auth
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: { ...(cors || {}) },
+    });
+  }
+
+  // Admin auth (POST only)
   const admin = requireAdmin(context);
   if (admin instanceof Response) return admin;
 
-  // CORS (allow Admin UI / Agency UI to call this endpoint from the browser)
-  const cors = corsHeaders(context);
-
-  // Preflight
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: { ...(cors || {}) } });
-  }
 
   if (request.method !== "POST") {
     return jsonResponse(context, { ok: false, error: "Method not allowed" }, 405);
