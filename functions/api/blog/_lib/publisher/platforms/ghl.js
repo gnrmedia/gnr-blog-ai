@@ -88,6 +88,56 @@ if (!external_id) {
   throw new Error(`ghl_create_post_no_id_shape: ${String(text).slice(0, 300)}`);
 }
 
+
+// ------------------------------------------------------------
+// STEP B — UPDATE POST WITH FULL CONTENT (PUT)
+// DevTools verified endpoint:
+// PUT https://services.leadconnectorhq.com/blogs/posts/{postId}
+// ------------------------------------------------------------
+
+const updateResp = await fetch(
+  `https://services.leadconnectorhq.com/blogs/posts/${external_id}`,
+  {
+    method: "PUT",
+    headers: {
+      accept: "application/json, text/plain, */*",
+      "content-type": "application/json",
+      channel: "APP",
+      source: "WEB_USER",
+      "token-id": tokenId,
+    },
+    body: JSON.stringify({
+      categories: cfg.categories || [],
+      tags: cfg.tags || [],
+      archived: false,
+      type: "manual",
+      status: "PUBLISHED",
+      locationId: payload.locationId,
+      blogId: payload.blogId,
+      title: payload.title,
+      description: payload.description,
+      urlSlug: cfg.urlSlug || "",
+      author: cfg.author || null,
+      canonicalLink: cfg.canonicalLink || null,
+      publishedAt: new Date().toISOString(),
+      scheduledAt: null,
+      imageAltText: cfg.imageAltText || payload.title,
+      imageUrl: cfg.imageUrl || null,
+
+      // THIS IS THE CRITICAL LINE
+      rawHTML: String(draft.content_html || "")
+    }),
+  }
+);
+
+const updateText = await updateResp.text();
+if (!updateResp.ok) {
+  throw new Error(
+    `ghl_update_failed_${updateResp.status}: ${updateText.slice(0, 300)}`
+  );
+}
+
+
 // Best-effort published URL template (optional)
 const published_url =
   cfg.published_url_template
