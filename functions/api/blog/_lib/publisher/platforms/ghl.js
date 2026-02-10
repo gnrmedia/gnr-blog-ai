@@ -38,12 +38,14 @@ const url = "https://services.leadconnectorhq.com/blogs/posts";
 // Choose ONE of these patterns depending on what you store:
 //
 // Pattern A: env.GHL_BLOG_TOKEN_ID is a token-id style JWT (recommended to match capture)
-const tokenId = String(env.GHL_BLOG_TOKEN_ID || "").trim();
+// Prefer per-target encrypted token stored in D1 (no redeploy rotation).
+const tokenFromCfg = await decryptTokenIdFailOpen(env, cfg.token_id_enc);
 
-// Pattern B (fallback): if you instead store an API key, you must capture the correct auth header
-// const tokenId = String(env.GHL_GNR_API_KEY || "").trim();
+// Fallback: global secret (legacy)
+const tokenId = String(tokenFromCfg || env.GHL_BLOG_TOKEN_ID || "").trim();
 
-if (!tokenId) throw new Error("missing_env_GHL_BLOG_TOKEN_ID");
+if (!tokenId) throw new Error("missing_token_id");
+
 
 const payload = {
   status: "DRAFT",
@@ -224,4 +226,45 @@ const published_url =
 
 function safeJson(s) {
   try { return JSON.parse(String(s || "{}")); } catch (_) { return {}; }
+}
+function base64UrlEncode(bytes) {
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+function base64UrlDecodeToBytes(b64url) {
+  const b64 = String(b64url || "").replace(/-/g, "+").replace(/_/g, "/") + "===".slice((String(b64url || "").length % 4) || 4);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function importAesKeyFromEnv(env) {
+  const k = env.PUBLISHER_TOKEN_KEY;
+  const raw = (k && typeof k.get === "function") ? await k.get() : k;
+  const keyStr = String(raw || "").trim();
+  if (!keyStr) throw new Error("missing_env_PUBLISHER_TOKEN_KEY");
+
+  // Key material: SHA-256 of string → 32 bytes for AES-GCM
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyStr));
+  return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+
+async function decryptTokenIdFailOpen(env, token_id_enc) {
+  try {
+    const enc = String(token_id_enc || "").trim();
+    if (!enc) return null;
+
+    const bytes = base64UrlDecodeToBytes(enc);
+    if (bytes.length < 12 + 8) return null; // iv + minimal ciphertext
+
+    const iv = bytes.slice(0, 12);
+    const ct = bytes.slice(12);
+
+    const key = await importAesKeyFromEnv(env);
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+    return new TextDecoder().decode(pt);
+  } catch (_) {
+    return null;
+  }
 }
