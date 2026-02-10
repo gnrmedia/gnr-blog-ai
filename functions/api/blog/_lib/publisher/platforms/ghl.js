@@ -59,16 +59,16 @@ if (!payload.blogId) throw new Error("ghl_blog_id_missing");
 const resp = await fetch(url, {
   method: "POST",
   headers: {
-headers: {
-  accept: "application/json, text/plain, */*",
-  "content-type": "application/json",
-  channel: "APP",
-  source: "WEB_USER",
-  "token-id": tokenId,
-  Version: "2021-07-28",
-},
+    accept: "application/json, text/plain, */*",
+    "content-type": "application/json",
+    channel: "APP",
+    source: "WEB_USER",
+    "token-id": tokenId,
+    Version: "2021-07-28",
+  },
   body: JSON.stringify(payload),
 });
+
 
 const text = await resp.text();
 let data = null;
@@ -101,13 +101,15 @@ const updateResp = await fetch(
   `https://services.leadconnectorhq.com/blogs/posts/${external_id}`,
   {
     method: "PUT",
-    headers: {
-      accept: "application/json, text/plain, */*",
-      "content-type": "application/json",
-      channel: "APP",
-      source: "WEB_USER",
-      "token-id": tokenId,
-    },
+  headers: {
+  accept: "application/json, text/plain, */*",
+  "content-type": "application/json",
+  channel: "APP",
+  source: "WEB_USER",
+  "token-id": tokenId,
+  Version: "2021-07-28",
+},
+
     body: JSON.stringify({
       categories: cfg.categories || [],
       tags: cfg.tags || [],
