@@ -182,16 +182,23 @@ if (echoedRaw && String(echoedRaw).trim()) {
   // Great — echoed back content, proceed.
 } else {
   // Fallback: verify persisted content via GET
-  const verifyResp = await fetch(updateUrl, {
-    method: "GET",
-    headers: {
-      accept: "application/json, text/plain, */*",
-      channel: "APP",
-      source: "WEB_USER",
-      "token-id": tokenId,
-      Version: "2021-07-28",
-    },
-  });
+const verifyUrl = `${updateUrl}?locationId=${encodeURIComponent(payload.locationId)}`;
+
+const verifyResp = await fetch(verifyUrl, {
+  method: "GET",
+  headers: {
+    accept: "application/json, text/plain, */*",
+    channel: "APP",
+    source: "WEB_USER",
+    "token-id": tokenId,
+    Version: "2021-07-28",
+
+    // Some GHL services also inspect headers
+    locationId: payload.locationId,
+    locationid: payload.locationId,
+  },
+});
+
 
   const verifyText = await verifyResp.text();
   if (!verifyResp.ok) {
