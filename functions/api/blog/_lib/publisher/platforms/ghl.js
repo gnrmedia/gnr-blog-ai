@@ -116,27 +116,37 @@ const updateResp = await fetch(
   Version: "2021-07-28",
 },
 
-    body: JSON.stringify({
-      categories: cfg.categories || [],
-      tags: cfg.tags || [],
-      archived: false,
-      type: "manual",
-      status: "PUBLISHED",
-      locationId: payload.locationId,
-      blogId: payload.blogId,
-      title: payload.title,
-      description: payload.description,
-      urlSlug: cfg.urlSlug || "",
-      author: cfg.author || null,
-      canonicalLink: cfg.canonicalLink || null,
-      publishedAt: new Date().toISOString(),
-      scheduledAt: null,
-      imageAltText: cfg.imageAltText || payload.title,
-      imageUrl: cfg.imageUrl || null,
+ const html = String(draft.content_html || "").trim();
 
-      // THIS IS THE CRITICAL LINE
-      rawHTML: String(draft.content_html || "")
-    }),
+if (!html) {
+  throw new Error("ghl_update_aborted_empty_html");
+}
+
+body: JSON.stringify({
+  categories: cfg.categories || [],
+  tags: cfg.tags || [],
+  archived: false,
+  type: "manual",
+  status: "PUBLISHED",
+  locationId: payload.locationId,
+  blogId: payload.blogId,
+  title: payload.title,
+  description: payload.description,
+  urlSlug: cfg.urlSlug || "",
+  author: cfg.author || null,
+  canonicalLink: cfg.canonicalLink || null,
+  publishedAt: new Date().toISOString(),
+  scheduledAt: null,
+  imageAltText: cfg.imageAltText || payload.title,
+  imageUrl: cfg.imageUrl || null,
+
+  // 🔑 REQUIRED FOR EDITOR
+  content: html,
+
+  // 🔑 REQUIRED FOR RENDERER
+  rawHTML: html
+})
+,
   }
 );
 
