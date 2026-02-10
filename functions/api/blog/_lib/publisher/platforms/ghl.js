@@ -59,12 +59,14 @@ if (!payload.blogId) throw new Error("ghl_blog_id_missing");
 const resp = await fetch(url, {
   method: "POST",
   headers: {
-    accept: "application/json, text/plain, */*",
-    "content-type": "application/json",
-    channel: "APP",
-    source: "WEB_USER",
-    "token-id": tokenId,
-  },
+headers: {
+  accept: "application/json, text/plain, */*",
+  "content-type": "application/json",
+  channel: "APP",
+  source: "WEB_USER",
+  "token-id": tokenId,
+  Version: "2021-07-28",
+},
   body: JSON.stringify(payload),
 });
 
