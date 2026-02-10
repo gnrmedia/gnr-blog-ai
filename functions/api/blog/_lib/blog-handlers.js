@@ -1198,34 +1198,44 @@ try {
 }
 
 
-  // Build markdown for rendering
-  const md0 = visualCommentsToTokens(stripInternalTelemetryComments(chosenMarkdown));
+  const md = visualCommentsToTokens(stripInternalTelemetryComments(chosenMarkdown));
 
-  // Extract first H1 as canonical display title (and remove from body to avoid duplicate titles)
-  let displayTitle = String(row.title || "Draft article").trim();
-  let mdBody = md0;
+      let bodyHtml = "";
+      try { bodyHtml = markdownToHtml(md); } catch (e) {
+              bodyHtml = `<pre style="white-space:pre-wrap;">${escapeHtml(md)}</pre>`;
+      }
+    
+  const assets = await getDraftAssetsMap(env, draft_id);
+      bodyHtml = replaceVisualTokensInHtml(bodyHtml, (kind) => {
+              const url = String(assets?.[kindToAssetKey(kind)] || "").trim();
+              if (url) {
+                        const labelMap = { hero: "Hero image", "infographic-summary": "Infographic summary", "process-diagram": "Process diagram", "proof-chart": "Proof chart", "pull-quote-graphic": "Pull quote graphic", "cta-banner": "CTA banner" };
+                        const label = labelMap[kind] || `Visual: ${kind}`;
+                        return `<figure class="gnr-visual gnr-${kind}"><img class="gnr-img" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy" /></figure>`;
+              }
+const block = (k, l, note) =>
+  `<section class="gnr-visual gnr-${k}"><div class="gnr-visual-inner"><div class="gnr-visual-label">${l}</div><div class="gnr-visual-note">${note}</div></div></section>`;
 
-  try {
-    const lines = md0.split("\n");
-    const idx = lines.findIndex((l) => /^#\s+/.test(l));
-    if (idx >= 0) {
-      const h1 = String(lines[idx]).replace(/^#\s+/, "").trim();
-      if (h1) displayTitle = h1;
-      // Remove the H1 line from body (keep everything else)
-      lines.splice(idx, 1);
-      mdBody = lines.join("\n").trim();
-    }
-  } catch (_) {}
+const map = {
+  hero: block("hero", "Hero Picture — Add Here", "This hero image must be added before the draft can continue."),
+  "infographic-summary": block("infographic", "Infographic Summary", "This visual will be auto-generated (or uploaded) by the platform."),
+  "process-diagram": block("diagram", "Process Diagram", "This visual will be auto-generated (or uploaded) by the platform."),
+  "proof-chart": block("chart", "Proof Chart", "This visual will be auto-generated (or uploaded) by the platform."),
+  "pull-quote-graphic": block("quote", "Pull Quote Graphic", "This visual will be auto-generated (or uploaded) by the platform."),
+  "cta-banner": block("cta", "CTA Banner", "This visual will be auto-generated (or uploaded) by the platform."),
+};
 
-  let bodyHtml = "";
-  try {
-    bodyHtml = markdownToHtml(mdBody);
-  } catch (e) {
-    bodyHtml = `<pre style="white-space:pre-wrap;">${escapeHtml(mdBody)}</pre>`;
-  }
+// STEP 2 RULE: only show placeholder for HERO.
+// Suppress all other missing visuals for now (CTA, diagrams, charts, etc).
+if (kind === "hero") {
+  return map.hero;
+}
+return "";
 
-  const title = escapeHtml(displayTitle);
 
+      });
+
+  const title = escapeHtml(String(row.title || "Draft article").trim());
 
   const statusLabel =
   String(row.status || "").toLowerCase() === "published"
@@ -1572,18 +1582,9 @@ try {
         + `<!-- eio_fingerprint: ${eioFingerprintJson} -->\n\n` + md.trim() + "\n";
       const finalHtml = markdownToHtml(stripInternalTelemetryComments(finalMd));
 
-// Extract canonical article title from generated markdown (first H1)
-let canonicalTitle = String(draftTitleHint || "").trim() || String(draft?.title || "").trim();
-try {
-  const h1Line = String(finalMd || "").split("\n").find((l) => /^#\s+/.test(l)) || "";
-  const h1 = h1Line ? h1Line.replace(/^#\s+/, "").trim() : "";
-  if (h1) canonicalTitle = h1;
-} catch (_) {}
-
 await env.GNR_MEDIA_BUSINESS_DB.prepare(`
   UPDATE blog_drafts
-     SET title = ?,
-         content_markdown = ?,
+     SET content_markdown = ?,
          content_html = ?,
          status = ?,
          context_quality = ?,
@@ -1592,7 +1593,6 @@ await env.GNR_MEDIA_BUSINESS_DB.prepare(`
          updated_at = datetime('now')
    WHERE draft_id = ?
 `).bind(
-  canonicalTitle,
   finalMd,
   finalHtml,
   DRAFT_STATUS.AI_GENERATED,
@@ -1601,7 +1601,6 @@ await env.GNR_MEDIA_BUSINESS_DB.prepare(`
   eioJson,
   draft.draft_id
 ).run();
-
 
 
   // Persist fingerprint (fail-open)
