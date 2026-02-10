@@ -80,15 +80,21 @@ if (!resp.ok) {
 
 // Try common id fields
 const external_id =
-  (data && (data._id || data.id || data.postId || data.blogPostId)) ? String(data._id || data.id || data.postId || data.blogPostId) :
-  (data && data.post && (data.post._id || data.post.id)) ? String(data.post._id || data.post.id) :
-  null;
+  // Common top-level shapes
+  (data && (data._id || data.id || data.postId || data.blogPostId))
+    ? String(data._id || data.id || data.postId || data.blogPostId)
+    : // Some responses wrap in "post"
+    (data && data.post && (data.post._id || data.post.id))
+      ? String(data.post._id || data.post.id)
+      : // ✅ Your observed shape: { blogPost: { _id: ... } }
+      (data && data.blogPost && (data.blogPost._id || data.blogPost.id))
+        ? String(data.blogPost._id || data.blogPost.id)
+        : null;
 
 if (!external_id) {
-  // Still succeeded, but we didn't detect the ID shape.
-  // Keep a minimal identifier so we can trace it later.
   throw new Error(`ghl_create_post_no_id_shape: ${String(text).slice(0, 300)}`);
 }
+
 
 
 // ------------------------------------------------------------
