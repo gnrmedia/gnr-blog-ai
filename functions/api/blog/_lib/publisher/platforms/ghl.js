@@ -15,14 +15,25 @@ export async function publishToGhl({ db, env, job }) {
   // -------------------------
 // Canonical defaults mapping
 // -------------------------
+// --- SAFETY: author must NEVER be null ---
 const authorId =
-  (String(cfg.author || "").trim()) ||
-  (String(cfg.default_author_id || "").trim()) ||
-  null;
+  String(cfg.author || "").trim() ||
+  String(cfg.default_author_id || "").trim() ||
+  "default"; // MUST map to an existing author in GHL
 
-const categories =
-  Array.isArray(cfg.categories) ? cfg.categories :
-  (String(cfg.default_category_id || "").trim() ? [String(cfg.default_category_id).trim()] : []);
+
+let categories =
+  Array.isArray(cfg.categories) && cfg.categories.length
+    ? cfg.categories
+    : (String(cfg.default_category_id || "").trim()
+        ? [String(cfg.default_category_id).trim()]
+        : []);
+
+// --- SAFETY: ensure at least one category ---
+if (!categories.length) {
+  categories = ["partnership"]; // MUST be a valid categoryId in GHL
+}
+
 
   const blog_id = String(cfg.blog_id || "").trim();
   if (!blog_id) throw new Error("ghl_blog_id_missing");
@@ -119,6 +130,19 @@ if (!html) throw new Error("ghl_update_aborted_empty_html");
 
 const updateUrl = `https://services.leadconnectorhq.com/blogs/posts/${external_id}`;
 
+// --- SAFETY: slug must NEVER be empty ---
+const safeSlug =
+  String(cfg.urlSlug || "").trim() ||
+  String(payload.title || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) ||
+  String(job.draft_id || "").trim() ||
+  String(external_id || "").trim() ||
+  "new-blog-post";
+
+
 const updateResp = await fetch(updateUrl, {
   method: "PUT",
   headers: {
@@ -139,13 +163,23 @@ const updateResp = await fetch(updateUrl, {
     blogId: payload.blogId,
     title: payload.title,
     description: payload.description,
-    urlSlug: cfg.urlSlug || "",
+
+urlSlug: safeSlug,
+
     author: authorId,
-    canonicalLink: cfg.canonicalLink || null,
+    canonicalLink:
+  /^https?:\/\//i.test(String(cfg.canonicalLink || "").trim())
+    ? String(cfg.canonicalLink).trim()
+    : null,
+
     publishedAt: new Date().toISOString(),
     scheduledAt: null,
     imageAltText: cfg.imageAltText || payload.title,
-    imageUrl: cfg.imageUrl || null,
+    // --- SAFETY: imageUrl must be absolute or null-safe ---
+imageUrl:
+  String(cfg.imageUrl || "").trim() ||
+  "https://gnrmedia.global/default-blog-hero.jpg",
+
 
     // ✅ REQUIRED / UI-aligned
     externalFonts: [],
