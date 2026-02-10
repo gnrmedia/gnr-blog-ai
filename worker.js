@@ -300,6 +300,19 @@ if (request.method === "POST" && pathname === "/api/blog/auto/run-location") {
   return withCors(request, await onRequest(context));
 }
 
+// ------------------------------------------------------------
+// POST /api/blog/publisher/ghl/token
+// Save token-id into publish_targets.config_json.token_id_enc (encrypted)
+// ------------------------------------------------------------
+if (request.method === "POST" && pathname === "/api/blog/publisher/ghl/token") {
+  // IMPORTANT: handle CORS preflight globally (already done at top via handleOptions)
+
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import("./functions/api/blog/publisher/ghl/token.js");
+  return withCors(request, await onRequest(context));
+}
 
     
     // ------------------------------------------------------------
