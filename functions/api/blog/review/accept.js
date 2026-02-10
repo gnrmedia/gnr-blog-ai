@@ -35,9 +35,9 @@ export async function onRequest(context) {
   if (isExpired(review.expires_at)) {
     // expire it
     await db.prepare(`
-      UPDATE blog_draft_reviews
-      SET status='EXPIRED', decided_at=datetime('now')
-      WHERE review_id=?
+UPDATE blog_draft_reviews
+SET status='EXPIRED', decided_at=datetime('now'), updated_at=datetime('now')
+WHERE review_id=?
     `).bind(review.review_id).run();
     return json({ ok: false, error: "Link expired" }, 410);
   }
@@ -68,16 +68,16 @@ if (!ACCEPTABLE.has(status)) {
 
   // Mark this review accepted
   await db.prepare(`
-    UPDATE blog_draft_reviews
-    SET status='ACCEPTED', decided_at=datetime('now')
-    WHERE review_id=?
+UPDATE blog_draft_reviews
+SET status='ACCEPTED', decided_at=datetime('now'), updated_at=datetime('now')
+WHERE review_id=?
   `).bind(review.review_id).run();
 
   // Close other pending review links for same draft (prevents zombies)
   await db.prepare(`
-    UPDATE blog_draft_reviews
-    SET status='SUPERSEDED', decided_at=datetime('now')
-    WHERE draft_id = ?
+UPDATE blog_draft_reviews
+SET status='SUPERSEDED', decided_at=datetime('now'), updated_at=datetime('now')
+WHERE draft_id = ? AND review_id <> ? AND status = 'PENDING'
       AND review_id <> ?
       AND status = 'PENDING'
   `).bind(review.draft_id, review.review_id).run();
