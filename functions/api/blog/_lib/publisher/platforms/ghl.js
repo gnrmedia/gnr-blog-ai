@@ -24,20 +24,76 @@ export async function publishToGhl({ db, env, job }) {
 
   if (!draft) throw new Error("draft_missing");
 
-  // ----------------------------
-  // TODO: DevTools-captured POST
-  // ----------------------------
-  // IMPORTANT: We will NOT guess endpoints.
-  // You will capture the real request in GHL using:
-  //   F12 → Network → create a blog post in UI → copy as fetch
-  //
-  // Then we paste that exact endpoint + headers here.
-  //
-  // For now, we simulate a publish result:
-  const external_id = `ghl_stub_${crypto.randomUUID()}`;
-  const published_url = cfg.published_url_template
+ // ------------------------------------------------------------
+// REAL GHL create-post call (captured via DevTools "Copy as fetch")
+// Endpoint: POST https://services.leadconnectorhq.com/blogs/posts
+// NOTE: This creates the post record (DRAFT) so it appears in GHL.
+// Content HTML may require a follow-up request (we will wire next).
+// ------------------------------------------------------------
+
+const url = "https://services.leadconnectorhq.com/blogs/posts";
+
+// IMPORTANT: do NOT hardcode the JWT from DevTools.
+// Store an equivalent token in env (secret) and pass here.
+// Choose ONE of these patterns depending on what you store:
+//
+// Pattern A: env.GHL_BLOG_TOKEN_ID is a token-id style JWT (recommended to match capture)
+const tokenId = String(env.GHL_BLOG_TOKEN_ID || "").trim();
+
+// Pattern B (fallback): if you instead store an API key, you must capture the correct auth header
+// const tokenId = String(env.GHL_GNR_API_KEY || "").trim();
+
+if (!tokenId) throw new Error("missing_env_GHL_BLOG_TOKEN_ID");
+
+const payload = {
+  status: "DRAFT",
+  locationId: String(job.location_id || job.locationId || "").trim() || String(cfg.location_id || "").trim(),
+  blogId: String(cfg.blog_id || cfg.blogId || "").trim(),
+  title: String(draft.title || "").trim() || "New Blog Post",
+  description: String(cfg.description || "Published via GNR Blog AI").trim(),
+};
+
+if (!payload.locationId) throw new Error("ghl_location_id_missing");
+if (!payload.blogId) throw new Error("ghl_blog_id_missing");
+
+const resp = await fetch(url, {
+  method: "POST",
+  headers: {
+    accept: "application/json, text/plain, */*",
+    "content-type": "application/json",
+    channel: "APP",
+    source: "WEB_USER",
+    "token-id": tokenId,
+  },
+  body: JSON.stringify(payload),
+});
+
+const text = await resp.text();
+let data = null;
+try { data = JSON.parse(text); } catch (_) {}
+
+if (!resp.ok) {
+  throw new Error(`ghl_create_post_failed_${resp.status}: ${String(text).slice(0, 300)}`);
+}
+
+// Try common id fields
+const external_id =
+  (data && (data._id || data.id || data.postId || data.blogPostId)) ? String(data._id || data.id || data.postId || data.blogPostId) :
+  (data && data.post && (data.post._id || data.post.id)) ? String(data.post._id || data.post.id) :
+  null;
+
+if (!external_id) {
+  // Still succeeded, but we didn't detect the ID shape.
+  // Keep a minimal identifier so we can trace it later.
+  throw new Error(`ghl_create_post_no_id_shape: ${String(text).slice(0, 300)}`);
+}
+
+// Best-effort published URL template (optional)
+const published_url =
+  cfg.published_url_template
     ? String(cfg.published_url_template).replace("{id}", external_id)
     : null;
+
 
   // Idempotency + audit
   await db.prepare(`
