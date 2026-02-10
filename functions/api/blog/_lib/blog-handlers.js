@@ -1200,13 +1200,29 @@ try {
 
   const md = visualCommentsToTokens(stripInternalTelemetryComments(chosenMarkdown));
 
-      let bodyHtml = "";
-      try { bodyHtml = markdownToHtml(md); } catch (e) {
-              bodyHtml = `<pre style="white-space:pre-wrap;">${escapeHtml(md)}</pre>`;
-      }
-    
+  // Extract the first Markdown H1 as the display title (but DO NOT alter md,
+  // because changing Markdown structure can break VISUAL token replacement blocks)
+  let displayTitle = String(row.title || "Draft article").trim();
+  try {
+    const h1Line = md.split("\n").find((l) => /^#\s+/.test(l)) || "";
+    const h1 = h1Line ? h1Line.replace(/^#\s+/, "").trim() : "";
+    if (h1) displayTitle = h1;
+  } catch (_) {}
+
+  let bodyHtml = "";
+  try {
+    bodyHtml = markdownToHtml(md);
+
+    // Remove the first rendered <h1> from the BODY so we don't show two titles.
+    // This avoids touching markdown (keeps VISUAL token rendering stable).
+    bodyHtml = bodyHtml.replace(/<h1>[\s\S]*?<\/h1>\s*/i, "");
+  } catch (e) {
+    bodyHtml = `<pre style="white-space:pre-wrap;">${escapeHtml(md)}</pre>`;
+  }
+
   const assets = await getDraftAssetsMap(env, draft_id);
-      bodyHtml = replaceVisualTokensInHtml(bodyHtml, (kind) => {
+  bodyHtml = replaceVisualTokensInHtml(bodyHtml, (kind) => {
+
               const url = String(assets?.[kindToAssetKey(kind)] || "").trim();
               if (url) {
                         const labelMap = { hero: "Hero image", "infographic-summary": "Infographic summary", "process-diagram": "Process diagram", "proof-chart": "Proof chart", "pull-quote-graphic": "Pull quote graphic", "cta-banner": "CTA banner" };
@@ -1235,7 +1251,8 @@ return "";
 
       });
 
-  const title = escapeHtml(String(row.title || "Draft article").trim());
+    const title = escapeHtml(displayTitle);
+
 
   const statusLabel =
   String(row.status || "").toLowerCase() === "published"
