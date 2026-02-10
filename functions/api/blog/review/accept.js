@@ -42,9 +42,15 @@ export async function onRequest(context) {
     return json({ ok: false, error: "Link expired" }, 410);
   }
 
-  if (String(review.status || "") !== "PENDING") {
-    return json({ ok: false, error: "Already decided", status: review.status }, 409);
-  }
+const status = String(review.status || "").toUpperCase();
+
+// Allow accept in the same editable states as Save
+const ACCEPTABLE = new Set(["PENDING", "ISSUED", "AI_GENERATED", "AI_VISUALS_GENERATED"]);
+
+if (!ACCEPTABLE.has(status)) {
+  return json({ ok: false, error: "Already decided", status }, 409);
+}
+
 
   // Persist follow-ups onto the review row (best-effort)
   try {
