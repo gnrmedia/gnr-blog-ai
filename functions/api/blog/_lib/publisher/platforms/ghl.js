@@ -134,7 +134,6 @@ const updateResp = await fetch(updateUrl, {
     imageUrl: cfg.imageUrl || null,
 
     // Populate editor + renderer
-    content: html,
     rawHTML: html,
   }),
 });
@@ -144,6 +143,18 @@ if (!updateResp.ok) {
   throw new Error(`ghl_update_failed_${updateResp.status}: ${updateText.slice(0, 300)}`);
 }
 
+// Fail-closed: if GHL still returns empty rawHTML, treat as failure.
+let updateJson = null;
+try { updateJson = JSON.parse(updateText); } catch (_) {}
+
+const storedRaw =
+  updateJson?.blogPost?.rawHTML ??
+  updateJson?.rawHTML ??
+  "";
+
+if (!String(storedRaw).trim()) {
+  throw new Error(`ghl_update_returned_empty_rawHTML: sent_len=${html.length}`);
+}
 
 
 // Best-effort published URL template (optional)
