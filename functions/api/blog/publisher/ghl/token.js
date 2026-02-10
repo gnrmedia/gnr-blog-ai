@@ -7,7 +7,7 @@
 // Stores token-id encrypted into publish_targets.config_json as token_id_enc
 // so token rotation can occur without redeploys.
 
-import { requireAdmin, jsonResponse, errorResponse } from "../../_lib/blog-handlers.js";
+import { requireAdmin, jsonResponse, errorResponse, corsHeaders } from "../../_lib/blog-handlers.js";
 
 function base64UrlEncode(bytes) {
   const b64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
@@ -42,6 +42,14 @@ export async function onRequest(context) {
   // Admin auth
   const admin = requireAdmin(context);
   if (admin instanceof Response) return admin;
+
+  // CORS (allow Admin UI / Agency UI to call this endpoint from the browser)
+  const cors = corsHeaders(context);
+
+  // Preflight
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: { ...(cors || {}) } });
+  }
 
   if (request.method !== "POST") {
     return jsonResponse(context, { ok: false, error: "Method not allowed" }, 405);
