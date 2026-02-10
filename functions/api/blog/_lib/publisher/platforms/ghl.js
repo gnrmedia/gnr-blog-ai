@@ -155,14 +155,49 @@ if (!updateResp.ok) {
 let updateJson = null;
 try { updateJson = JSON.parse(updateText); } catch (_) {}
 
-const storedRaw =
+// Prefer response echo if present (some responses omit rawHTML even when persisted)
+const echoedRaw =
   updateJson?.blogPost?.rawHTML ??
+  updateJson?.blogPost?.rawHtml ??
   updateJson?.rawHTML ??
-  "";
+  updateJson?.rawHtml ??
+  null;
 
-if (!String(storedRaw).trim()) {
-  throw new Error(`ghl_update_returned_empty_rawHTML: sent_len=${html.length}`);
+if (echoedRaw && String(echoedRaw).trim()) {
+  // Great — echoed back content, proceed.
+} else {
+  // Fallback: verify persisted content via GET
+  const verifyResp = await fetch(updateUrl, {
+    method: "GET",
+    headers: {
+      accept: "application/json, text/plain, */*",
+      channel: "APP",
+      source: "WEB_USER",
+      "token-id": tokenId,
+      Version: "2021-07-28",
+    },
+  });
+
+  const verifyText = await verifyResp.text();
+  if (!verifyResp.ok) {
+    throw new Error(`ghl_verify_failed_${verifyResp.status}: ${verifyText.slice(0, 220)}`);
+  }
+
+  let verifyJson = null;
+  try { verifyJson = JSON.parse(verifyText); } catch (_) {}
+
+  const persistedRaw =
+    verifyJson?.blogPost?.rawHTML ??
+    verifyJson?.blogPost?.rawHtml ??
+    verifyJson?.rawHTML ??
+    verifyJson?.rawHtml ??
+    "";
+
+  if (!String(persistedRaw).trim()) {
+    throw new Error(`ghl_update_persisted_empty_rawHTML: sent_len=${html.length}`);
+  }
 }
+
 
 
 // Best-effort published URL template (optional)
