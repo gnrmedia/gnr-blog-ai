@@ -115,27 +115,35 @@ const updateResp = await fetch(updateUrl, {
     "token-id": tokenId,
     Version: "2021-07-28",
   },
-  body: JSON.stringify({
-    categories: cfg.categories || [],
-    tags: cfg.tags || [],
-    archived: false,
-    type: "manual",
-    status: "PUBLISHED",
-    locationId: payload.locationId,
-    blogId: payload.blogId,
-    title: payload.title,
-    description: payload.description,
-    urlSlug: cfg.urlSlug || "",
-    author: cfg.author || null,
-    canonicalLink: cfg.canonicalLink || null,
-    publishedAt: new Date().toISOString(),
-    scheduledAt: null,
-    imageAltText: cfg.imageAltText || payload.title,
-    imageUrl: cfg.imageUrl || null,
+body: JSON.stringify({
+  categories: cfg.categories || [],
+  tags: cfg.tags || [],
+  archived: false,
+  type: "manual",
+  status: "PUBLISHED",
+  locationId: payload.locationId,
+  blogId: payload.blogId,
+  title: payload.title,
+  description: payload.description,
+  urlSlug: cfg.urlSlug || "",
+  author: cfg.author || null,
+  canonicalLink: cfg.canonicalLink || null,
+  publishedAt: new Date().toISOString(),
+  scheduledAt: null,
+  imageAltText: cfg.imageAltText || payload.title,
+  imageUrl: cfg.imageUrl || null,
 
-    // Populate editor + renderer
-    rawHTML: html,
-  }),
+  // 🔑 REQUIRED by GHL to persist rawHTML
+  externalFonts: [],
+
+  // Optional but harmless (UI sends them)
+  readTimeInMinutes: 0,
+  wordCount: html.split(/\s+/).length,
+  isAutoSave: false,
+
+  rawHTML: html,
+}),
+
 });
 
 const updateText = await updateResp.text();
