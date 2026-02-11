@@ -88,6 +88,14 @@ const result = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
    WHERE target_id = ?
 `).bind(token_id_enc, target_id).run();
 
+if (!result?.success || (result?.meta?.changes ?? 0) === 0) {
+  return errorResponse(context, "token_update_failed_no_matching_target", 404, {
+    target_id,
+    location_id
+  });
+}
+
+
 if (!result.success || result.meta?.changes === 0) {
   return errorResponse(context, "token_update_failed_no_matching_target", 500, {
     target_id,
