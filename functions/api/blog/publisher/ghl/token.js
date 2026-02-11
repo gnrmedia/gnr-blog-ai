@@ -89,11 +89,32 @@ const result = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
 `).bind(token_id_enc, target_id).run();
 
 if (!result?.success || (result?.meta?.changes ?? 0) === 0) {
+  // Runtime D1 snapshot (proves what DB the API is actually hitting)
+  let snapshot = null;
+  try {
+    const countRow = await env.GNR_MEDIA_BUSINESS_DB
+      .prepare(`SELECT COUNT(*) AS n FROM publish_targets`)
+      .first();
+
+    const sample = await env.GNR_MEDIA_BUSINESS_DB
+      .prepare(`SELECT target_id, location_id FROM publish_targets ORDER BY target_id LIMIT 10`)
+      .all();
+
+    snapshot = {
+      publish_targets_count: Number(countRow?.n ?? 0),
+      publish_targets_sample: sample?.results ?? [],
+    };
+  } catch (e) {
+    snapshot = { snapshot_error: String(e?.message || e) };
+  }
+
   return errorResponse(context, "token_update_failed_no_matching_target", 404, {
     target_id,
-    location_id
+    location_id,
+    snapshot,
   });
 }
+
 
 
   } catch (e) {
