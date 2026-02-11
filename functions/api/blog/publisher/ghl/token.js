@@ -96,13 +96,6 @@ if (!result?.success || (result?.meta?.changes ?? 0) === 0) {
 }
 
 
-if (!result.success || result.meta?.changes === 0) {
-  return errorResponse(context, "token_update_failed_no_matching_target", 500, {
-    target_id,
-    location_id
-  });
-}
-
   } catch (e) {
     return errorResponse(context, "db_update_failed", 500, { detail: String(e?.message || e) });
   }
