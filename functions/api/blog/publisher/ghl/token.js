@@ -81,13 +81,20 @@ export async function onRequest(context) {
 
   // Write into publish_targets.config_json
   try {
-    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-      UPDATE publish_targets
-         SET config_json = json_set(COALESCE(config_json,'{}'), '$.token_id_enc', ?),
-             updated_at = datetime('now')
-       WHERE target_id = ?
-         AND location_id = ?
-    `).bind(token_id_enc, target_id, location_id).run();
+const result = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+  UPDATE publish_targets
+     SET config_json = json_set(COALESCE(config_json,'{}'), '$.token_id_enc', ?),
+         updated_at = datetime('now')
+   WHERE target_id = ?
+`).bind(token_id_enc, target_id).run();
+
+if (!result.success || result.meta?.changes === 0) {
+  return errorResponse(context, "token_update_failed_no_matching_target", 500, {
+    target_id,
+    location_id
+  });
+}
+
   } catch (e) {
     return errorResponse(context, "db_update_failed", 500, { detail: String(e?.message || e) });
   }
