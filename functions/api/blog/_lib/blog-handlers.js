@@ -1,3 +1,5 @@
+import { enqueuePublishJobsForDraft, processQueuedPublishJobsForDraft } from "./publisher/index.js";
+
 // blog-handlers.js — Phase 2: MVP Draft Lifecycle
 // -----------------------------------------------------------
 // Migrated from zlegacy-workers/blog-ai.worker.js
@@ -557,6 +559,16 @@ async function upsertDraftAssetRow(env, { draft_id, visual_key, image_url, provi
       if (!k || !VISUAL_KINDS.includes(k)) return { ok: false, error: "invalid visual_key", allowed: VISUAL_KINDS };
       if (!/^https?:\/\//i.test(url) && !/^data:image\//i.test(url)) {
               return { ok: false, error: "image_url must be https:// or data:image/*" };
+      }
+      if (k === "hero") {
+              if (/^data:image\/svg\+xml/i.test(url) || /\.svg(?:\?|#|$)/i.test(url)) {
+                      return { ok: false, error: "hero_svg_not_allowed" };
+              }
+              const isDataImage = /^data:image\//i.test(url);
+              const isCdnHero = /^https:\/\/imagedelivery\.net\/.+\/public(?:\?|#|$)/i.test(url);
+              if (!isDataImage && !isCdnHero) {
+                      return { ok: false, error: "hero_image_url_must_be_imagedelivery_or_data_image" };
+              }
       }
       const asset_id = `${did}:${k}`;
 
@@ -1824,6 +1836,14 @@ export async function upsertDraftAsset(ctx, draftid, key, assetData) {
       
         const image_url = String(assetData?.image_url || assetData?.url || "").trim();
         if (!image_url) return errorResponse(ctx, "asset_data.image_url required", 400);
+        if (visual_key === "hero") {
+                  const isDataImage = /^data:image\//i.test(image_url);
+                  const isCdnHero = /^https:\/\/imagedelivery\.net\/.+\/public(?:\?|#|$)/i.test(image_url);
+                  const isSvg = /^data:image\/svg\+xml/i.test(image_url) || /\.svg(?:\?|#|$)/i.test(image_url);
+                  if (isSvg || (!isDataImage && !isCdnHero)) {
+                            return errorResponse(ctx, "hero image_url must be Cloudflare Images delivery URL or data:image/* (non-SVG)", 400);
+                  }
+        }
       
         // Validate draft exists
         const exists = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
@@ -2167,6 +2187,12 @@ export async function acceptReview(ctx, token, follow = {}) {
   const { error, row, token_hash } = await getReviewRowByToken(ctx, token);
   if (error) return error;
 
+  const reviewStatus = String(row.status || "").trim().toUpperCase();
+  const EDITABLE = new Set(["PENDING", "ISSUED", "AI_VISUALS_GENERATED"]);
+  if (!EDITABLE.has(reviewStatus)) {
+    return errorResponse(ctx, "Review is not active", 409, { status: row.status });
+  }
+
   const draft_id = String(row.draft_id || "").trim();
   if (!draft_id) return errorResponse(ctx, "Review row missing draft_id", 500);
 
@@ -2186,7 +2212,6 @@ export async function acceptReview(ctx, token, follow = {}) {
 
   const f = normFollow(follow);
 
-  // Use client content if present; otherwise keep existing draft copy
   const md = String(row.client_content_markdown || "").trim()
     ? String(row.client_content_markdown)
     : String(draft.content_markdown || "");
@@ -2203,7 +2228,6 @@ export async function acceptReview(ctx, token, follow = {}) {
      WHERE draft_id = ?
   `).bind(md, html, DRAFT_STATUS.APPROVED, draft_id).run();
 
-  // Mark review accepted (schema tolerant)
   try {
     await env.GNR_MEDIA_BUSINESS_DB.prepare(`
       UPDATE blog_draft_reviews
@@ -2228,6 +2252,29 @@ export async function acceptReview(ctx, token, follow = {}) {
        WHERE token_hash = ?
     `).bind(token_hash).run();
   }
+
+  try {
+    const publishTask = (async () => {
+      try {
+        await enqueuePublishJobsForDraft({
+          db: env.GNR_MEDIA_BUSINESS_DB,
+          draft_id,
+          location_id: String(row.location_id || "").trim(),
+        });
+        await processQueuedPublishJobsForDraft({
+          db: env.GNR_MEDIA_BUSINESS_DB,
+          env,
+          draft_id,
+          location_id: String(row.location_id || "").trim(),
+        });
+      } catch (e) {
+        console.log("REVIEW_ACCEPT_PUBLISH_FAIL_OPEN", { draft_id, error: String(e?.message || e) });
+      }
+    })();
+
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(publishTask);
+    else publishTask.catch(() => {});
+  } catch (_) {}
 
   return jsonResponse(ctx, { ok: true, action: "approved", draft_id });
 }

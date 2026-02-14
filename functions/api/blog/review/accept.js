@@ -22,7 +22,6 @@ export async function onRequest(context) {
   const db = env.GNR_MEDIA_BUSINESS_DB;
   const hash = await tokenHash(t, env);
 
-  // Find review
   const review = await db.prepare(`
     SELECT review_id, draft_id, location_id, status, expires_at, client_email, client_content_markdown
     FROM blog_draft_reviews
@@ -33,26 +32,20 @@ export async function onRequest(context) {
   if (!review) return json({ ok: false, error: "Invalid token" }, 404);
 
   if (isExpired(review.expires_at)) {
-    // expire it
     await db.prepare(`
-UPDATE blog_draft_reviews
-SET status='EXPIRED', decided_at=datetime('now'), updated_at=datetime('now')
-WHERE review_id=?
+      UPDATE blog_draft_reviews
+      SET status='EXPIRED', decided_at=datetime('now'), updated_at=datetime('now')
+      WHERE review_id=?
     `).bind(review.review_id).run();
     return json({ ok: false, error: "Link expired" }, 410);
   }
 
-const status = String(review.status || "").toUpperCase();
+  const status = String(review.status || "").toUpperCase();
+  const ACCEPTABLE = new Set(["PENDING", "ISSUED", "AI_VISUALS_GENERATED"]);
+  if (!ACCEPTABLE.has(status)) {
+    return json({ ok: false, error: "Already decided", status }, 409);
+  }
 
-// Allow accept in the same editable states as Save
-const ACCEPTABLE = new Set(["PENDING", "ISSUED", "AI_GENERATED", "AI_VISUALS_GENERATED"]);
-
-if (!ACCEPTABLE.has(status)) {
-  return json({ ok: false, error: "Already decided", status }, 409);
-}
-
-
-  // Persist follow-ups onto the review row (best-effort)
   try {
     if (follow_emphasis || follow_avoid) {
       await db.prepare(`
@@ -66,93 +59,84 @@ if (!ACCEPTABLE.has(status)) {
     }
   } catch (_) {}
 
-  // Mark this review accepted
-  await db.prepare(`
-UPDATE blog_draft_reviews
-SET status='ACCEPTED', decided_at=datetime('now'), updated_at=datetime('now')
-WHERE review_id=?
-  `).bind(review.review_id).run();
+  try {
+    await db.prepare(`
+      UPDATE blog_draft_reviews
+      SET status='ACCEPTED', decided_at=datetime('now'), updated_at=datetime('now')
+      WHERE review_id=?
+    `).bind(review.review_id).run();
 
-  // Close other pending review links for same draft (prevents zombies)
-  await db.prepare(`
-    UPDATE blog_draft_reviews
-    SET status='SUPERSEDED', decided_at=datetime('now'), updated_at=datetime('now')
-    WHERE draft_id = ?
-      AND review_id <> ?
-      AND status = 'PENDING'
-  `).bind(review.draft_id, review.review_id).run();
+    await db.prepare(`
+      UPDATE blog_draft_reviews
+      SET status='SUPERSEDED', decided_at=datetime('now'), updated_at=datetime('now')
+      WHERE draft_id = ?
+        AND review_id <> ?
+        AND status IN ('PENDING','ISSUED','AI_VISUALS_GENERATED')
+    `).bind(review.draft_id, review.review_id).run();
 
-  // If client saved edits, write them onto the draft before approving (minimal, safe)
-  const savedMd = String(review.client_content_markdown || "").trim();
-  if (savedMd) {
-    const finalMd = savedMd.endsWith("\n") ? savedMd : (savedMd + "\n");
-    const finalHtml = markdownToHtml(stripInternalTelemetryComments(finalMd));
+    const savedMd = String(review.client_content_markdown || "").trim();
+    if (savedMd) {
+      const finalMd = savedMd.endsWith("\n") ? savedMd : (savedMd + "\n");
+      const finalHtml = markdownToHtml(stripInternalTelemetryComments(finalMd));
 
-     // Update draft.title from the first Markdown H1 (prevents placeholder titles leaking)
-    let canonicalTitle = null;
-    try {
-      const h1Line = finalMd.split("\n").find((l) => /^#\s+/.test(l)) || "";
-      const h1 = h1Line ? h1Line.replace(/^#\s+/, "").trim() : "";
-      if (h1) canonicalTitle = h1;
-    } catch (_) {}
+      let canonicalTitle = null;
+      try {
+        const h1Line = finalMd.split("\n").find((l) => /^#\s+/.test(l)) || "";
+        const h1 = h1Line ? h1Line.replace(/^#\s+/, "").trim() : "";
+        if (h1) canonicalTitle = h1;
+      } catch (_) {}
+
+      await db.prepare(`
+        UPDATE blog_drafts
+        SET
+          title = COALESCE(NULLIF(?, ''), title),
+          content_markdown = ?,
+          content_html = ?,
+          updated_at = datetime('now')
+        WHERE draft_id = ?
+      `).bind(canonicalTitle, finalMd, finalHtml, review.draft_id).run();
+    }
 
     await db.prepare(`
       UPDATE blog_drafts
       SET
-        title = COALESCE(NULLIF(?, ''), title),
-        content_markdown = ?,
-        content_html = ?,
-        updated_at = datetime('now')
-      WHERE draft_id = ?
-    `).bind(canonicalTitle, finalMd, finalHtml, review.draft_id).run();
+        status='approved',
+        approved_at=datetime('now'),
+        approved_by_email=?,
+        updated_at=datetime('now')
+      WHERE draft_id=?
+    `).bind(review.client_email || null, review.draft_id).run();
+  } catch (e) {
+    console.error("REVIEW_ACCEPT_FAILED", review.draft_id, String(e?.message || e));
+    return json({ ok: false, error: "accept_failed", detail: String(e?.message || e) }, 200);
   }
 
-  // Approve draft
-  await db.prepare(`
-    UPDATE blog_drafts
-    SET
-      status='approved',
-      approved_at=datetime('now'),
-      approved_by_email=?
-    WHERE draft_id=?
-  `).bind(review.client_email || null, review.draft_id).run();
-
-  // ------------------------------------------------------------
-// Enqueue publish jobs (FAIL-OPEN, async)
-// ------------------------------------------------------------
-try {
-  if (ctx && typeof ctx.waitUntil === "function") {
-    ctx.waitUntil((async () => {
+  // Publish enqueue and processing must never block approval.
+  try {
+    const publishTask = (async () => {
       try {
         await enqueuePublishJobsForDraft({
           db,
           draft_id: review.draft_id,
-          location_id: review.location_id
+          location_id: review.location_id,
         });
 
         await processQueuedPublishJobsForDraft({
           db,
           env,
           draft_id: review.draft_id,
-          location_id: review.location_id
+          location_id: review.location_id,
         });
       } catch (e) {
-        console.error(
-          "PUBLISH_ON_ACCEPT_FAILED",
-          review.draft_id,
-          String(e && e.message ? e.message : e)
-        );
+        console.error("PUBLISH_ON_ACCEPT_FAIL_OPEN", review.draft_id, String(e?.message || e));
       }
-    })());
+    })();
 
-  }
-} catch (_) {}
-
-
-  // (Optional) background tasks later; safe no-op for now
-  try {
     if (ctx && typeof ctx.waitUntil === "function") {
-      ctx.waitUntil(Promise.resolve());
+      ctx.waitUntil(publishTask);
+    } else {
+      // No runtime waitUntil support: still fail-open and do not await.
+      publishTask.catch(() => {});
     }
   } catch (_) {}
 
@@ -185,7 +169,6 @@ async function tokenHash(rawToken, env) {
   return sha256Hex(`v1|${pepper}|${rawToken}`);
 }
 
-// minimal markdown renderer for publish surface (safe subset)
 function escapeHtml(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -195,7 +178,6 @@ function escapeHtml(s) {
     .replace(/'/g, "&#039;");
 }
 
-// remove internal telemetry comments
 function stripInternalTelemetryComments(md) {
   const s = String(md || "");
   return s
@@ -206,7 +188,6 @@ function stripInternalTelemetryComments(md) {
     .trim();
 }
 
-// very small markdown -> html (enough for review publish surface)
 function markdownToHtml(md) {
   const txt = escapeHtml(String(md || ""));
   const lines = txt.split("\n");
