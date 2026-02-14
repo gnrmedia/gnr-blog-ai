@@ -31,6 +31,7 @@ export async function onRequest(context) {
 
   // ✅ Validate required field early so we don't throw deeper
   const image_url = String(asset_data.image_url || "").trim();
+  const keyNorm = String(key || "").trim().toLowerCase();
   const isHttpUrl = /^https?:\/\//i.test(image_url);
   const isDataImage = /^data:image\//i.test(image_url);
 
@@ -53,6 +54,28 @@ export async function onRequest(context) {
         headers: { "content-type": "application/json; charset=utf-8" },
       }
     );
+  }
+
+
+  if (keyNorm === "hero") {
+    const isSvg = /^data:image\/svg\+xml/i.test(image_url) || /\.svg(?:\?|#|$)/i.test(image_url);
+    const isCdnHero = /^https:\/\/imagedelivery\.net\/.+\/public(?:\?|#|$)/i.test(image_url);
+    if (isSvg || (!isDataImage && !isCdnHero)) {
+      return new Response(
+        JSON.stringify(
+          {
+            ok: false,
+            error: "hero image_url must be https://imagedelivery.net/.../public or data:image/* (non-SVG)",
+          },
+          null,
+          2
+        ),
+        {
+          status: 400,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        }
+      );
+    }
   }
 
   // ✅ Optional safety: avoid trying to store multi-megabyte data URLs in D1

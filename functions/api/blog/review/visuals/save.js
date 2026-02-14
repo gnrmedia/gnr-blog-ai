@@ -2,7 +2,13 @@
 // Path: functions/api/blog/review/visuals/save.js
 
 // PUBLIC: POST /api/blog/review/visuals/save
-// Body: { t: "<token>", visual_key: "hero", image_url: "https://..." }
+// Preferred Body:
+// {
+//   t: "<token>",
+//   draft_id: "...",
+//   key: "hero",
+//   asset_data: { image_url, provider, asset_type, status }
+// }
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -13,34 +19,37 @@ export async function onRequest(context) {
 
   const body = await request.json().catch(() => ({}));
   const t = String(body.t || "").trim();
-  const visual_key = String(body.visual_key || "").trim().toLowerCase();
-  const image_url = String(body.image_url || "").trim();
+
+  // Canonical payload first, then legacy fallback.
+  const key = String(body.key || body.visual_key || "").trim().toLowerCase();
+  const assetData = body && typeof body.asset_data === "object" && body.asset_data
+    ? body.asset_data
+    : {};
+  const image_url = String(assetData.image_url || body.image_url || "").trim();
 
   if (!t) return json({ ok: false, error: "token (t) required" }, 400);
-  if (!visual_key) return json({ ok: false, error: "visual_key required" }, 400);
-  if (!image_url) return json({ ok: false, error: "image_url required" }, 400);
+  if (!key) return json({ ok: false, error: "key required" }, 400);
 
-  // HERO ONLY (per your requirement)
-  if (visual_key !== "hero") {
+  if (key !== "hero") {
     return json({ ok: false, error: "Only 'hero' is supported right now", allowed: ["hero"] }, 400);
   }
 
-// Allow https URLs OR uploaded base64 images (admin parity)
-if (!/^https:\/\//i.test(image_url) && !/^data:image\//i.test(image_url)) {
-  return json(
-    { ok: false, error: "image_url must start with https:// or data:image/*" },
-    400
-  );
-}
+  if (!isAllowedHeroUrl(image_url)) {
+    return json(
+      {
+        ok: false,
+        error: "hero image_url must be https://imagedelivery.net/.../public or data:image/* (non-SVG)",
+      },
+      400
+    );
+  }
 
-// Optional safety guard: limit base64 size (~2MB)
-if (/^data:image\//i.test(image_url) && image_url.length > 2_800_000) {
-  return json(
-    { ok: false, error: "data:image too large (max ~2MB). Use https:// URL instead." },
-    400
-  );
-}
-
+  if (/^data:image\//i.test(image_url) && image_url.length > 2_800_000) {
+    return json(
+      { ok: false, error: "data:image too large (max ~2MB). Use Cloudflare Images URL instead." },
+      400
+    );
+  }
 
   const db = env.GNR_MEDIA_BUSINESS_DB;
   const hash = await tokenHash(t, env);
@@ -65,18 +74,19 @@ if (/^data:image\//i.test(image_url) && image_url.length > 2_800_000) {
     return json({ ok: false, error: "Link expired" }, 410);
   }
 
-// Allow saving visuals while review is still editable.
-// Keep parity with /api/blog/review/save (PENDING, ISSUED, AI_VISUALS_GENERATED)
-const st = String(review.status || "").trim().toUpperCase();
-const EDITABLE = new Set(["PENDING", "ISSUED", "AI_VISUALS_GENERATED"]);
+  const st = String(review.status || "").trim().toUpperCase();
+  const EDITABLE = new Set(["PENDING", "ISSUED", "AI_VISUALS_GENERATED"]);
 
-if (!EDITABLE.has(st)) {
-  return json({ ok: false, error: "Review is not active", status: review.status }, 409);
-}
+  if (!EDITABLE.has(st)) {
+    return json({ ok: false, error: "Review is not active", status: review.status }, 409);
+  }
 
+  const requestDraftId = String(body.draft_id || "").trim();
+  if (requestDraftId && requestDraftId !== String(review.draft_id || "")) {
+    return json({ ok: false, error: "draft_id mismatch" }, 409);
+  }
 
-  // Upsert hero asset
-  const asset_id = `${String(review.draft_id)}:${visual_key}`;
+  const asset_id = `${String(review.draft_id)}:${key}`;
 
   await db.prepare(`
     INSERT INTO blog_draft_assets (
@@ -85,23 +95,31 @@ if (!EDITABLE.has(st)) {
     ON CONFLICT(asset_id) DO UPDATE SET
       image_url = excluded.image_url,
       provider = excluded.provider,
+      asset_type = excluded.asset_type,
       status = excluded.status,
       updated_at = datetime('now')
   `).bind(
     asset_id,
     String(review.draft_id),
-    visual_key,
-    "image",
-    "client",
+    key,
+    String(assetData.asset_type || "image"),
+    String(assetData.provider || "client"),
     "client_url_swap",
     image_url,
-    "ready"
+    String(assetData.status || "ready")
   ).run();
 
-  return json({ ok: true, action: "visual_saved", draft_id: review.draft_id, visual_key, image_url }, 200);
+  return json({ ok: true, action: "visual_saved", draft_id: review.draft_id, key, image_url }, 200);
 }
 
-// ---------------- helpers ----------------
+function isAllowedHeroUrl(image_url) {
+  const url = String(image_url || "").trim();
+  if (!url) return false;
+  if (/^data:image\/svg\+xml/i.test(url)) return false;
+  if (/\.svg(?:\?|#|$)/i.test(url)) return false;
+  if (/^data:image\//i.test(url)) return true;
+  return /^https:\/\/imagedelivery\.net\/.+\/public(?:\?|#|$)/i.test(url);
+}
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj, null, 2), {
