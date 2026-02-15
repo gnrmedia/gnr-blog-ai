@@ -118,11 +118,13 @@ export async function onRequest(context) {
   try {
     // 1) Enqueue synchronously so publish_jobs exists immediately (proves the pipeline).
     try {
+      console.log("ENQUEUE_START", review.draft_id);
       await enqueuePublishJobsForDraft({
         db,
         draft_id: review.draft_id,
         location_id: review.location_id,
       });
+      console.log("ENQUEUE_DONE", review.draft_id);
     } catch (e) {
       console.error("PUBLISH_ENQUEUE_FAIL_OPEN", review.draft_id, String(e?.message || e));
     }
