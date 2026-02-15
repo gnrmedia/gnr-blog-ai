@@ -3,6 +3,18 @@
 //
 // POST /api/blog/publisher/ghl/token
 // Body: { location_id: "...", target_id?: "...", token_id: "eyJ..." }
+// Example client call:
+// fetch("https://api.admin.gnrmedia.global/api/blog/publisher/ghl/token", {
+//   method: "POST",
+//   headers: { "content-type": "application/json" },
+//   body: JSON.stringify({
+//     location_id: "SyD22grjJQnKrRnsGwaP",
+//     target_id: "SyD22grjJQnKrRnsGwaP:ghl_blog",
+//     token_id: "NEW_TOKEN_ID_HERE"
+//   })
+// })
+// .then(r => r.json())
+// .then(console.log);
 //
 // Stores token-id encrypted into publish_targets.config_json as token_id_enc
 // so token rotation can occur without redeploys.
