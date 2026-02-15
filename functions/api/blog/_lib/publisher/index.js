@@ -15,6 +15,8 @@ export async function enqueuePublishJobsForDraft({ db, draft_id, location_id }) 
         AND (is_active = 1 OR is_active IS NULL)
     `).bind(location_id).all();
 
+    console.log("ENQUEUE_TARGETS", location_id, (targets?.results || []).length);
+
     const rows = targets?.results || [];
     if (!rows.length) return;
 
