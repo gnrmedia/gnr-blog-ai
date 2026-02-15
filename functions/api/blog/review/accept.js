@@ -7,9 +7,12 @@ import { enqueuePublishJobsForDraft, processQueuedPublishJobsForDraft } from "..
 
 export async function onRequest(context) {
   const { request, env } = context;
-  const waitUntil = (context && typeof context.waitUntil === "function")
-    ? context.waitUntil.bind(context)
-    : null;
+  const waitUntil =
+    (context && typeof context.waitUntil === "function")
+      ? context.waitUntil.bind(context)
+      : (context?.ctx && typeof context.ctx.waitUntil === "function")
+        ? context.ctx.waitUntil.bind(context.ctx)
+        : null;
 
   if (request.method !== "POST") {
     return json({ ok: false, error: "Method not allowed" }, 405);
@@ -143,9 +146,8 @@ export async function onRequest(context) {
       }
     })();
 
-    if (waitUntil) {
-      waitUntil(processTask);
-    }
+    if (waitUntil) waitUntil(processTask);
+    else console.warn("PUBLISH_NO_WAITUNTIL", review.draft_id);
   } catch (_) {}
 
   return json({ ok: true, action: "accepted", draft_id: review.draft_id }, 200);
