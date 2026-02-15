@@ -89,6 +89,12 @@ const payload = {
 if (!payload.locationId) throw new Error("ghl_location_id_missing");
 if (!payload.blogId) throw new Error("ghl_blog_id_missing");
 
+console.log("GHL_CREATE_PAYLOAD", {
+  locationId: payload.locationId,
+  blogId: payload.blogId,
+  target_id: job.target_id
+});
+
 const resp = await fetch(url, {
   method: "POST",
   headers: {
