@@ -15,16 +15,7 @@ export async function enqueuePublishJobsForDraft({ db, draft_id, location_id }) 
         AND (is_active = 1 OR is_active IS NULL)
     `).bind(location_id).all();
 
-    console.log("ENQUEUE_TARGETS", location_id, (targets?.results || []).length);
-
     const rows = targets?.results || [];
-    console.log("ENQUEUE_TARGETS_SAMPLE", location_id, rows.slice(0, 3));
-
-    const total = await db.prepare(`SELECT COUNT(*) AS n FROM publish_targets`).first();
-    console.log("PUBLISH_TARGETS_TOTAL", total?.n);
-
-    console.log("ENQUEUE_TARGETS", location_id, rows.length);
-
     if (!rows.length) return;
 
     for (const t of rows) {
@@ -32,7 +23,6 @@ export async function enqueuePublishJobsForDraft({ db, draft_id, location_id }) 
       const target_id = String(t.target_id || "").trim();
       if (!platform || !target_id) continue;
 
-      // Idempotency guard: if already published, do not enqueue
       const already = await db.prepare(`
         SELECT 1
         FROM publish_ledger
@@ -60,6 +50,7 @@ export async function enqueuePublishJobsForDraft({ db, draft_id, location_id }) 
     // fail-open
   }
 }
+
 
 // -------------------------------------------
 // Process queued jobs for this draft
