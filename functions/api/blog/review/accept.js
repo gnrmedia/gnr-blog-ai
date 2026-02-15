@@ -6,7 +6,10 @@
 import { enqueuePublishJobsForDraft, processQueuedPublishJobsForDraft } from "../_lib/publisher/index.js";
 
 export async function onRequest(context) {
-  const { request, env, ctx } = context;
+  const { request, env } = context;
+  const waitUntil = (context && typeof context.waitUntil === "function")
+    ? context.waitUntil.bind(context)
+    : null;
 
   if (request.method !== "POST") {
     return json({ ok: false, error: "Method not allowed" }, 405);
@@ -111,16 +114,22 @@ export async function onRequest(context) {
     return json({ ok: false, error: "accept_failed", detail: String(e?.message || e) }, 200);
   }
 
-  // Publish enqueue and processing must never block approval.
+  // Publish enqueue must happen (fast D1 insert). Processing must never block approval.
   try {
-    const publishTask = (async () => {
-      try {
-        await enqueuePublishJobsForDraft({
-          db,
-          draft_id: review.draft_id,
-          location_id: review.location_id,
-        });
+    // 1) Enqueue synchronously so publish_jobs exists immediately (proves the pipeline).
+    try {
+      await enqueuePublishJobsForDraft({
+        db,
+        draft_id: review.draft_id,
+        location_id: review.location_id,
+      });
+    } catch (e) {
+      console.error("PUBLISH_ENQUEUE_FAIL_OPEN", review.draft_id, String(e?.message || e));
+    }
 
+    // 2) Process in the background when possible.
+    const processTask = (async () => {
+      try {
         await processQueuedPublishJobsForDraft({
           db,
           env,
@@ -128,15 +137,12 @@ export async function onRequest(context) {
           location_id: review.location_id,
         });
       } catch (e) {
-        console.error("PUBLISH_ON_ACCEPT_FAIL_OPEN", review.draft_id, String(e?.message || e));
+        console.error("PUBLISH_PROCESS_FAIL_OPEN", review.draft_id, String(e?.message || e));
       }
     })();
 
-    if (ctx && typeof ctx.waitUntil === "function") {
-      ctx.waitUntil(publishTask);
-    } else {
-      // No runtime waitUntil support: still fail-open and do not await.
-      publishTask.catch(() => {});
+    if (waitUntil) {
+      waitUntil(processTask);
     }
   } catch (_) {}
 
