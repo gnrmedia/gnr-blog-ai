@@ -15,7 +15,23 @@ export async function enqueuePublishJobsForDraft({ db, draft_id, location_id }) 
         AND (is_active = 1 OR is_active IS NULL)
     `).bind(location_id).all();
 
+    console.log("DEBUG_LOCATION_ID_FROM_JOB", location_id);
+
+    const count = await db.prepare(`
+      SELECT COUNT(*) as c
+      FROM publish_targets
+    `).first();
+
+    console.log("DEBUG_PUBLISH_TARGET_COUNT", count?.c);
+
     const rows = targets?.results || [];
+    console.log("ENQUEUE_TARGETS_SAMPLE", location_id, rows.slice(0, 3));
+
+    const total = await db.prepare(`SELECT COUNT(*) AS n FROM publish_targets`).first();
+    console.log("PUBLISH_TARGETS_TOTAL", total?.n);
+
+    console.log("ENQUEUE_TARGETS", location_id, rows.length);
+
     if (!rows.length) return;
 
     for (const t of rows) {
