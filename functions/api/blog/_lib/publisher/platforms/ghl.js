@@ -62,18 +62,28 @@ const url = "https://services.leadconnectorhq.com/blogs/posts";
 //
 // Pattern A: env.GHL_BLOG_TOKEN_ID is a token-id style JWT (recommended to match capture)
 // Prefer per-target encrypted token stored in D1 (no redeploy rotation).
+const encPresent = !!String(cfg.token_id_enc || "").trim();
 const tokenFromCfg = await decryptTokenIdFailOpen(env, cfg.token_id_enc);
 
-// Fallback: global secret (legacy)
+// If D1 token is present but cannot decrypt, FAIL CLOSED.
+// This prevents silent fallback and “mystery” auth behavior.
+if (encPresent && !tokenFromCfg) {
+  console.error("GHL_TOKEN_DECRYPT_FAILED", {
+    target_id: job.target_id,
+    location_id: job.location_id,
+  });
+  throw new Error("ghl_token_decrypt_failed: token_id_enc present but cannot decrypt (check PUBLISHER_TOKEN_KEY / token save)");
+}
+
+// If no D1 token, fall back to ENV (legacy).
 const tokenId = String(tokenFromCfg || env.GHL_BLOG_TOKEN_ID || "").trim();
 
 console.log("GHL_TOKEN_DIAGNOSTIC", {
-  has_token_id_enc: !!String(cfg.token_id_enc || "").trim(),
+  has_token_id_enc: encPresent,
   decrypt_success: !!tokenFromCfg,
   token_length: tokenId.length,
-  source: tokenFromCfg ? "D1.token_id_enc" : "ENV.GHL_BLOG_TOKEN_ID"
+  source: tokenFromCfg ? "D1.token_id_enc" : "ENV.GHL_BLOG_TOKEN_ID",
 });
-
 
 if (!tokenId) throw new Error("missing_token_id");
 
