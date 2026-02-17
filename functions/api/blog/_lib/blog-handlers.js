@@ -653,6 +653,12 @@ async function openaiGenerateImageBase64({ env, prompt, size }) {
     // dall-e-2 / dall-e-3: needs response_format and n; size constraints differ
     body.response_format = "b64_json";
     body.n = 1;
+
+    // DALL·E 3 only: reduce “dramatic / busy” bias
+    if (model === "dall-e-3") {
+      body.style = "natural";
+    }
+
     body.size = (model === "dall-e-3")
       ? (size === "1024x1024" || size === "1792x1024" || size === "1024x1792" ? size : "1792x1024")
       : (size === "256x256" || size === "512x512" || size === "1024x1024" ? size : "1024x1024");
@@ -847,14 +853,16 @@ async function autoGenerateVisualsForDraft(env, draft_id) {
       try {
               const heroPrompt = [
                         "Create a premium, magazine-quality feature image for a marketing blog article.",
-                        "Style: modern editorial, cinematic lighting, clean premium design, subtle abstract gradients.",
-                        "Brand feel: dark premium base, confident, high-trust (GNR Media style).",
+                        "Overall feel: bright, fresh, modern, premium, high-trust. Airy with generous white space.",
+                        "Lighting: bright natural light, soft shadows (NOT cinematic, NOT moody).",
+                        "Palette: clean light neutrals with subtle teal + warm gold accents (avoid deep navy/charcoal dominance).",
+                        "Composition: minimal and uncluttered — ONE strong focal element only, centered, with plenty of breathing room.",
+                        "Detail rule: avoid busy scenes, avoid lots of tiny icons/objects, avoid visual noise and clutter.",
+                        "Texture/style: refined editorial illustration (clean 3D or crisp minimal realism), soft gradients, calm and polished.",
                         "ABSOLUTE RULE: no text, no letters, no numbers, no typography in the image.",
                         "No logos, no watermarks, no fake brand marks.",
-                        "Composition: abstract + photoreal blend, with strong depth and a clear focal point.",
-                        "Use subtle green accents and deep navy/charcoal tones.",
                         `Theme: ${title}`,
-                        `Concept cues: ${subtitle}`,
+                        `Concept cues (keep minimal): ${subtitle}`,
                       ].join("\n");
 const gen = await generateAndStoreImage({
   env,
