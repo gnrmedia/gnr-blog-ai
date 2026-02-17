@@ -243,47 +243,85 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
   };
 
 
-// ---------- 1) GHL Media Library (PRIMARY) ----------
+// ---------- 1) GHL Media Storage (PRIMARY) ----------
   try {
     if (env.GHL_GNR_API_KEY && location_id) {
       const ghlKey = typeof env.GHL_GNR_API_KEY.get === "function"
         ? await env.GHL_GNR_API_KEY.get()
         : env.GHL_GNR_API_KEY;
 
-      const res = await fetch(
-        `https://services.leadconnectorhq.com/locations/${location_id}/media`,
-        {
-          headers: {
-            Authorization: `Bearer ${ghlKey}`,
-            Version: "2021-07-28",
-            Accept: "application/json",
-          },
-        }
-      );
+      // Media Storage API (HighLevel v2): GET /medias/files?locationId=...
+      // Docs: /medias/files (files/folders listing)
+      const url = `https://services.leadconnectorhq.com/medias/files?locationId=${encodeURIComponent(location_id)}&limit=1000`;
 
-      if (res.ok) {
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${ghlKey}`,
+          Version: "2021-07-28",
+          Accept: "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        console.log("PASSPORT_MEDIA_LIST_NONOK", res.status, location_id);
+      } else {
         const data = await res.json();
-        const items = Array.isArray(data?.media) ? data.media : [];
+
+        // Be defensive: different shapes have existed over time.
+        const items =
+          (Array.isArray(data?.files) && data.files) ||
+          (Array.isArray(data?.data?.files) && data.data.files) ||
+          (Array.isArray(data?.items) && data.items) ||
+          (Array.isArray(data?.media) && data.media) ||
+          [];
 
         const abnNorm = norm(abn);
         const nameNorm = norm(businessName);
 
-        const match = items.find((m) => {
-          const n = norm(m?.name || "");
-          return (
-            (abnNorm && n.includes(abnNorm)) ||
-            (nameNorm && n.includes(nameNorm))
-          );
-        });
+        // Prefer text-readable companions if present (txt/md/html), then pdf.
+        const extRank = (name) => {
+          const n = String(name || "").toLowerCase();
+          if (n.endsWith(".txt")) return 1;
+          if (n.endsWith(".md")) return 2;
+          if (n.endsWith(".html") || n.endsWith(".htm")) return 3;
+          if (n.endsWith(".pdf")) return 9;
+          return 5;
+        };
 
-        if (match?.url) {
-          return {
-            found: true,
-            source: "ghl_media",
-            url: match.url,
-            match_basis: abnNorm ? "abn" : "business_name",
-            confidence: 0.95,
-          };
+        const candidates = items
+          .map((m) => {
+            const name = m?.name || m?.fileName || "";
+            const n = norm(name);
+            const abnHit = abnNorm && n.includes(abnNorm);
+            const nameHit = nameNorm && n.includes(nameNorm);
+            return { m, name, abnHit, nameHit };
+          })
+          .filter((x) => x.abnHit || x.nameHit)
+          .sort((a, b) => extRank(a.name) - extRank(b.name));
+
+        const pick = candidates[0]?.m;
+        if (pick) {
+          const pickName = candidates[0].name;
+          const basis = candidates[0].abnHit ? "abn" : "business_name";
+          const fileUrl =
+            pick?.url ||
+            pick?.publicUrl ||
+            pick?.downloadUrl ||
+            pick?.fileUrl ||
+            pick?.hostedUrl ||
+            null;
+
+          if (fileUrl) {
+            return {
+              found: true,
+              source: "ghl_media_storage",
+              url: fileUrl,
+              match_basis: basis,
+              confidence: 0.95,
+            };
+          } else {
+            console.log("PASSPORT_MEDIA_MATCH_NO_URL", location_id, pickName);
+          }
         }
       }
     }
