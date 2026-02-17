@@ -250,8 +250,7 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
         ? await env.GHL_GNR_API_KEY.get()
         : env.GHL_GNR_API_KEY;
 
-      // Media Storage API (HighLevel v2): GET /medias/files?locationId=...
-      // Docs: /medias/files (files/folders listing)
+      // HighLevel Media Storage listing
       const url = `https://services.leadconnectorhq.com/medias/files?locationId=${encodeURIComponent(location_id)}&limit=1000`;
 
       const res = await fetch(url, {
@@ -262,23 +261,19 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
         },
       });
 
-      if (!res.ok) {
-        console.log("PASSPORT_MEDIA_LIST_NONOK", res.status, location_id);
-      } else {
+      if (res.ok) {
         const data = await res.json();
 
-        // Be defensive: different shapes have existed over time.
+        // Defensive parsing: API shapes vary
         const items =
           (Array.isArray(data?.files) && data.files) ||
           (Array.isArray(data?.data?.files) && data.data.files) ||
           (Array.isArray(data?.items) && data.items) ||
-          (Array.isArray(data?.media) && data.media) ||
           [];
 
         const abnNorm = norm(abn);
         const nameNorm = norm(businessName);
 
-        // Prefer text-readable companions if present (txt/md/html), then pdf.
         const extRank = (name) => {
           const n = String(name || "").toLowerCase();
           if (n.endsWith(".txt")) return 1;
@@ -301,7 +296,6 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
 
         const pick = candidates[0]?.m;
         if (pick) {
-          const pickName = candidates[0].name;
           const basis = candidates[0].abnHit ? "abn" : "business_name";
           const fileUrl =
             pick?.url ||
@@ -319,8 +313,6 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
               match_basis: basis,
               confidence: 0.95,
             };
-          } else {
-            console.log("PASSPORT_MEDIA_MATCH_NO_URL", location_id, pickName);
           }
         }
       }
@@ -1444,7 +1436,7 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
 
   // Business context
   const biz = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-      SELECT business_name_raw, abn, website_url, blog_url
+      SELECT business_name_raw, abn, website_url, blog_url, marketing_passport
           FROM businesses WHERE location_id LIKE ? AND length(location_id) = ? LIMIT 1
             `).bind(String(draft.location_id || ""), String(draft.location_id || "").length).first();
       const businessName = biz?.business_name_raw || "this business";
@@ -1482,7 +1474,7 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
 
 
   // Context quality + fetched excerpts
-const mpUrl = passport.found ? passport.url : null;
+const mpUrl = String(biz?.marketing_passport || "").trim() || (passport.found ? passport.url : null);
 const siteUrl = String(biz?.website_url || "").trim();
 const blogUrl = String(biz?.blog_url || "").trim();
 
