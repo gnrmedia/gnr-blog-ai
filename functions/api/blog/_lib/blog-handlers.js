@@ -1474,7 +1474,9 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
 
 
   // Context quality + fetched excerpts
-const mpUrl = String(biz?.marketing_passport_url || "").trim() || (passport.found ? passport.url : null);
+const mpUrlFromD1 = String(biz?.marketing_passport_url || "").trim();
+const mpUrl = mpUrlFromD1 || (passport.found ? passport.url : null);
+
 const siteUrl = String(biz?.website_url || "").trim();
 const blogUrl = String(biz?.blog_url || "").trim();
 
@@ -1485,9 +1487,11 @@ const blogText = blogUrl ? await fetchContextText(blogUrl, { maxChars: 5000 }) :
 let context_quality = "low";
 let context_quality_reason = "no_sources";
 
-if (passport.found && mpText && mpText.length >= 250) {
+const mpSource = mpUrlFromD1 ? "d1_url" : (passport.found ? passport.source : "missing");
+
+if (mpText && mpText.length >= 250) {
   context_quality = "high";
-  context_quality_reason = `marketing_passport_${passport.source}`;
+  context_quality_reason = `marketing_passport_${mpSource}`;
 } else if (siteText || blogText) {
   context_quality = "medium";
   context_quality_reason = passport.found ? "passport_unreadable_using_website" : "passport_missing_using_website";
