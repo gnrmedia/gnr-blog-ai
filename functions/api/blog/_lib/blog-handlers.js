@@ -1436,7 +1436,7 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
 
   // Business context
   const biz = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-      SELECT business_name_raw, abn, website_url, blog_url, marketing_passport
+      SELECT business_name_raw, abn, website_url, blog_url, marketing_passport_url
           FROM businesses WHERE location_id LIKE ? AND length(location_id) = ? LIMIT 1
             `).bind(String(draft.location_id || ""), String(draft.location_id || "").length).first();
       const businessName = biz?.business_name_raw || "this business";
@@ -1474,7 +1474,7 @@ export async function generateAiForDraft(ctx, draftid, options = {}) {
 
 
   // Context quality + fetched excerpts
-const mpUrl = String(biz?.marketing_passport || "").trim() || (passport.found ? passport.url : null);
+const mpUrl = String(biz?.marketing_passport_url || "").trim() || (passport.found ? passport.url : null);
 const siteUrl = String(biz?.website_url || "").trim();
 const blogUrl = String(biz?.blog_url || "").trim();
 
