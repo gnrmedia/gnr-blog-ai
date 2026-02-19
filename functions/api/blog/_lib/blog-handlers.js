@@ -2037,19 +2037,9 @@ export async function createReviewLink(ctx, draftid, clientemail = null) {
   }
 
 
-  // Build review URL
-  // Prefer explicit override, otherwise use the calling Admin UI Origin
-  const overrideBase = String(env.PUBLIC_REVIEW_BASE || "").trim();
-
-  const originHeader = request.headers.get("Origin");
-  const originBase =
-    originHeader && CORS_ALLOWED_ORIGINS.has(originHeader)
-      ? originHeader
-      : null;
-
-  const base = overrideBase || originBase || new URL(request.url).origin;
-
-  const review_url = `${String(base).replace(/\/+$/g, "")}/review?t=${encodeURIComponent(token)}`;
+  // Always use Worker host for review page
+  const reviewBase = "https://api.admin.gnrmedia.global";
+  const review_url = `${reviewBase}/review?t=${encodeURIComponent(token)}`;
 
 
 
