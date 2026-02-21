@@ -63,6 +63,58 @@ const extractFirstJsonObject = (txt) => {
       return null;
 };
 
+async function sendSendgridEmail(env, { to, subject, html }) {
+  const keyObj = env.SENDGRID_API_KEY_GNRMEDIA;
+  const apiKey = (keyObj && typeof keyObj.get === "function")
+    ? await keyObj.get()
+    : keyObj;
+
+  if (!apiKey) throw new Error("Missing SENDGRID_API_KEY_GNRMEDIA");
+
+  const fromEmail = String(env.SENDGRID_FROM_EMAIL || "").trim();
+  const fromName = String(env.SENDGRID_FROM_NAME || "GNR Media").trim();
+
+  const payload = {
+    personalizations: [{ to: [{ email: to }] }],
+    from: { email: fromEmail, name: fromName },
+    reply_to: { email: fromEmail },
+    subject,
+    content: [{ type: "text/html", value: html }],
+  };
+
+  const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`SendGrid failed: ${res.status} ${txt.slice(0, 500)}`);
+  }
+
+  return true;
+}
+
+function buildReviewEmailHtml({ businessName, reviewUrl }) {
+  return `
+  <div style="font-family:Inter,Arial,sans-serif;line-height:1.6;">
+    <h2>Your next article is ready for review</h2>
+    <p>Hello,</p>
+    <p>Your next GNR Media article for <strong>${businessName}</strong> is ready.</p>
+    <p>Please review and approve it here:</p>
+    <p><a href="${reviewUrl}" style="display:inline-block;padding:12px 20px;background:#301b7f;color:#fff;text-decoration:none;border-radius:6px;">
+      Review Article
+    </a></p>
+    <p>If you have any issues, simply reply to this email and our team will help.</p>
+    <p>– GNR Media</p>
+  </div>
+  `;
+}
+
 // ============================================================
 // CORS (admin UI calls blog-api cross-origin)
 // ============================================================
@@ -1829,6 +1881,33 @@ export async function runNowForLocation(ctx, locationid) {
            WHERE draft_id = ?
         `).bind(DRAFT_STATUS.REVIEW_LINK_ISSUED, draft_id).run();
       } catch (_) {}
+
+      const biz = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+        SELECT business_name_raw, contact_email
+          FROM businesses
+         WHERE location_id = ?
+         LIMIT 1
+      `).bind(loc).first();
+
+      const recipient = String(biz?.contact_email || "").trim();
+
+      if (recipient) {
+        try {
+          await sendSendgridEmail(env, {
+            to: recipient,
+            subject: "Your GNR Media article is ready for review",
+            html: buildReviewEmailHtml({
+              businessName: biz?.business_name_raw,
+              reviewUrl: review.review_url,
+            }),
+          });
+        } catch (e) {
+          console.log("REVIEW_EMAIL_FAIL_OPEN", {
+            location_id: loc,
+            error: String(e?.message || e),
+          });
+        }
+      }
     }
   } catch (e) {
     // fail-open; still return draft + hero
@@ -2623,35 +2702,7 @@ export async function runAutoCadence(ctx, limit = 25) {
   }
 
   // 2) For each location: decide → create draft → generate AI (fail-open per location)
-  // HARD GATES (manual publishing constraint):
-  // - Max: 1 draft per 7 days (weekly cap)
-  // - Min: 1 draft per 30 days (monthly floor)
-  const MIN_DAYS = 7;
-  const MAX_DAYS = 30;
-
-  // Helpers
-  const parseD1DateToMs = (raw) => {
-    const s = String(raw || "").trim();
-    if (!s) return null;
-
-    // D1 often returns "YYYY-MM-DD HH:MM:SS"
-    // Convert to ISO-ish UTC for Date.parse
-    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/.test(s)) {
-      const iso = s.replace(" ", "T") + "Z";
-      const ms = Date.parse(iso);
-      return Number.isFinite(ms) ? ms : null;
-    }
-
-    // Already ISO?
-    const ms = Date.parse(s);
-    return Number.isFinite(ms) ? ms : null;
-  };
-
-  const daysSinceMs = (ms) => {
-    if (!Number.isFinite(ms)) return null;
-    return (Date.now() - ms) / (1000 * 60 * 60 * 24);
-  };
-
+  
   // Add a skip bucket to the output (safe additive change)
   out.skips = [];
 
@@ -2660,73 +2711,65 @@ export async function runAutoCadence(ctx, limit = 25) {
     if (!location_id) continue;
 
     try {
-      // ------------------------------------------------------------
-      // (A) Frequency gating (weekly max, monthly min)
-      // ------------------------------------------------------------
-      let lastCreatedAt = null;
-      try {
-        // NOTE: we intentionally use blog_drafts.created_at as the canonical “draft initiation” timestamp.
-        // If you want the cap to key off review issuance instead, swap this to blog_draft_reviews.created_at.
-        const last = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-          SELECT created_at
-            FROM blog_drafts
-           WHERE location_id LIKE ? AND length(location_id) = ?
-             AND deleted_at IS NULL
-           ORDER BY datetime(created_at) DESC
-           LIMIT 1
-        `).bind(location_id, location_id.length).first();
+      // --------------------------------------------
+      // SMART FREQUENCY ENGINE
+      // Weekly cap + Monthly floor + Adaptive bias
+      // --------------------------------------------
 
-        lastCreatedAt = last?.created_at || null;
-      } catch (e) {
-        // Fail-open: if schema differs (e.g. deleted_at missing), re-try without deleted_at
-        try {
-          const last2 = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-            SELECT created_at
-              FROM blog_drafts
-             WHERE location_id LIKE ? AND length(location_id) = ?
-             ORDER BY datetime(created_at) DESC
-             LIMIT 1
-          `).bind(location_id, location_id.length).first();
+      // Get last delivery time
+      const cadenceRow = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+        SELECT last_delivered_at
+        FROM auto_cadence_state
+        WHERE location_id = ?
+        LIMIT 1
+      `).bind(location_id).first();
 
-          lastCreatedAt = last2?.created_at || null;
-        } catch (_) {}
+      const lastDelivered = cadenceRow?.last_delivered_at
+        ? new Date(cadenceRow.last_delivered_at)
+        : null;
+
+      const daysSinceLast =
+        lastDelivered ? (Date.now() - lastDelivered.getTime()) / (1000 * 60 * 60 * 24) : null;
+
+      // Hard weekly minimum
+      if (daysSinceLast !== null && daysSinceLast < 7) {
+        continue;
       }
 
-      const lastMs = parseD1DateToMs(lastCreatedAt);
-      const ageDays = daysSinceMs(lastMs);
+      // Hard monthly maximum
+      if (daysSinceLast !== null && daysSinceLast >= 30) {
+        // force generation
+      } else if (daysSinceLast !== null) {
 
-      // If we have a last draft timestamp, apply gates
-      if (ageDays !== null) {
-        // Weekly cap: skip if last < 7 days
-        if (ageDays < MIN_DAYS) {
-          out.skips.push({
-            location_id,
-            reason: "weekly_cap",
-            age_days: Math.round(ageDays * 10) / 10,
-            last_created_at: lastCreatedAt,
-          });
+        // ----- Adaptive bias -----
+        const state = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+          SELECT authority_score
+          FROM editorial_state
+          WHERE location_id = ?
+          LIMIT 1
+        `).bind(location_id).first();
+
+        const counts = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+          SELECT COUNT(*) as total
+          FROM blog_drafts
+          WHERE location_id = ?
+            AND status = 'approved'
+        `).bind(location_id).first();
+
+        const totalApproved = counts?.total || 0;
+        const authority = state?.authority_score || 0;
+
+        let weeklyBias = 0.4;
+
+        if (totalApproved < 6) weeklyBias = 0.7;
+        else if (totalApproved < 20) weeklyBias = 0.5;
+        else weeklyBias = 0.3;
+
+        if (authority < 40) weeklyBias += 0.1;
+        if (authority > 75) weeklyBias -= 0.1;
+
+        if (Math.random() > weeklyBias) {
           continue;
-        }
-
-        // Monthly floor: force if >= 30 days
-        if (ageDays >= MAX_DAYS) {
-          // proceed (forced)
-        } else {
-          // Natural “brain” in the middle window (7–29 days):
-          // probability ramps from 0 → 1 as we approach 30 days
-          const p = (ageDays - MIN_DAYS) / (MAX_DAYS - MIN_DAYS); // 0..~1
-          const roll = Math.random();
-          if (roll > p) {
-            out.skips.push({
-              location_id,
-              reason: "brain_deferred",
-              age_days: Math.round(ageDays * 10) / 10,
-              p: Math.round(p * 1000) / 1000,
-              roll: Math.round(roll * 1000) / 1000,
-              last_created_at: lastCreatedAt,
-            });
-            continue;
-          }
         }
       }
 
@@ -2770,6 +2813,15 @@ export async function runAutoCadence(ctx, limit = 25) {
         draft_id,
         generated: genObj?.action || genObj?.status || "ok",
       });
+
+      await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+        INSERT INTO auto_cadence_state (location_id, last_delivered_at, updated_at)
+        VALUES (?, datetime('now'), datetime('now'))
+        ON CONFLICT(location_id)
+        DO UPDATE SET
+          last_delivered_at = datetime('now'),
+          updated_at = datetime('now')
+      `).bind(location_id).run();
 
       // Optional: event log (fail-open)
       try {
