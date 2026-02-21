@@ -150,6 +150,66 @@ export async function onRequest(context) {
     else console.warn("PUBLISH_NO_WAITUNTIL", review.draft_id);
   } catch (_) {}
 
+  // ------------------------------------------------------------
+  // TEAM NOTIFY (fail-open, async)
+  // ------------------------------------------------------------
+  try {
+    const notifyTask = (async () => {
+      try {
+        // Pull assigned staff emails from D1
+        const rs = await db.prepare(`
+          SELECT DISTINCT user_email
+            FROM agency_location_assignments
+           WHERE location_id = ?
+             AND user_email IS NOT NULL
+             AND TRIM(user_email) <> ''
+        `).bind(String(review.location_id || "").trim()).all();
+
+        const emails = (rs?.results || [])
+          .map((r) => String(r.user_email || "").trim().toLowerCase())
+          .filter(Boolean);
+
+        if (!emails.length) {
+          console.log("TEAM_NOTIFY_SKIP_NO_ASSIGNEES", { location_id: review.location_id, draft_id: review.draft_id });
+          return;
+        }
+
+        // Optional: get business name for subject
+        const biz = await db.prepare(`
+          SELECT business_name_raw
+            FROM businesses
+           WHERE location_id = ?
+           LIMIT 1
+        `).bind(String(review.location_id || "").trim()).first();
+
+        const businessName = String(biz?.business_name_raw || "a client").trim();
+
+        const html = `
+          <div style="font-family:Arial,sans-serif;line-height:1.5">
+            <h2>Client approved a draft</h2>
+            <p><b>Business:</b> ${escapeHtml(businessName)}</p>
+            <p><b>Location ID:</b> ${escapeHtml(String(review.location_id || ""))}</p>
+            <p><b>Draft ID:</b> ${escapeHtml(String(review.draft_id || ""))}</p>
+            <p>Status is now <b>approved</b>. Publishing will run automatically if enabled.</p>
+          </div>
+        `;
+
+        await sendSendgridEmail(env, {
+          to: emails,
+          subject: `✅ Draft approved — ${businessName}`,
+          html,
+        });
+
+        console.log("TEAM_NOTIFY_SENT", { draft_id: review.draft_id, location_id: review.location_id, to_count: emails.length });
+      } catch (e) {
+        console.log("TEAM_NOTIFY_FAIL_OPEN", { draft_id: review.draft_id, error: String(e?.message || e) });
+      }
+    })();
+
+    if (waitUntil) waitUntil(notifyTask);
+    else notifyTask.catch(() => {});
+  } catch (_) {}
+
   return json({ ok: true, action: "accepted", draft_id: review.draft_id }, 200);
 }
 
@@ -177,6 +237,46 @@ async function sha256Hex(text) {
 async function tokenHash(rawToken, env) {
   const pepper = String(env.REVIEW_TOKEN_PEPPER || "");
   return sha256Hex(`v1|${pepper}|${rawToken}`);
+}
+
+async function envString(env, key) {
+  const v = env?.[key];
+  if (v && typeof v === "object" && typeof v.get === "function") {
+    const s = await v.get();
+    return String(s || "");
+  }
+  return String(v || "");
+}
+
+async function sendSendgridEmail(env, { to, subject, html }) {
+  const apiKey = (await envString(env, "SENDGRID_API_KEY_GNRMEDIA")).trim();
+  if (!apiKey) throw new Error("Missing SENDGRID_API_KEY_GNRMEDIA");
+
+  const fromEmail = String(env.SENDGRID_FROM_EMAIL || "").trim(); // should be support@gnrmedia.global
+  const fromName = String(env.SENDGRID_FROM_NAME || "GNR Media").trim();
+  if (!fromEmail) throw new Error("Missing SENDGRID_FROM_EMAIL");
+
+  const payload = {
+    personalizations: [{ to: to.map((email) => ({ email })) }],
+    from: { email: fromEmail, name: fromName },
+    reply_to: { email: fromEmail },
+    subject,
+    content: [{ type: "text/html", value: html }],
+  };
+
+  const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`SendGrid failed: ${res.status} ${txt.slice(0, 600)}`);
+  }
 }
 
 function escapeHtml(s) {
