@@ -1811,15 +1811,40 @@ export async function runNowForLocation(ctx, locationid) {
   const assets = await getDraftAssetsMap(env, draft_id);
   const hero_url = String(assets?.hero || "").trim() || null;
 
-return jsonResponse(ctx, {
-  ok: true,
-  action: "run_now_completed",
-  location_id: loc,
-  draft_id,
-  status: String(gen?.status || DRAFT_STATUS.AI_VISUALS_GENERATED),
-  hero_url,
+  // 4) Create review link immediately (Run Now override)
+  // NOTE: createReviewLink requires admin auth and builds canonical Worker-host review URLs.
+  let review = null;
+  try {
+    const reviewResp = await createReviewLink(ctx, draft_id, null);
+    review = await unwrapJson(reviewResp);
+
+    if (review?.ok) {
+      // Move the draft lifecycle forward to REVIEW_LINK_ISSUED
+      // (safe: won’t affect approved/published due to createReviewLink guard)
+      try {
+        await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+          UPDATE blog_drafts
+             SET status = ?,
+                 updated_at = datetime('now')
+           WHERE draft_id = ?
+        `).bind(DRAFT_STATUS.REVIEW_LINK_ISSUED, draft_id).run();
+      } catch (_) {}
+    }
+  } catch (e) {
+    // fail-open; still return draft + hero
+    review = { ok: false, error: "review_link_create_failed", detail: String(e?.message || e) };
+  }
+
+  return jsonResponse(ctx, {
+    ok: true,
+    action: "run_now_completed",
+    location_id: loc,
+    draft_id,
+    status: DRAFT_STATUS.REVIEW_LINK_ISSUED,
+    hero_url,
+    review: review?.ok ? review : null,
     visual_debug: (gen && Object.prototype.hasOwnProperty.call(gen, "visual_debug")) ? gen.visual_debug : null,
-});
+  });
 }
 
 
@@ -2597,13 +2622,117 @@ export async function runAutoCadence(ctx, limit = 25) {
     try { return JSON.parse(txt || "{}"); } catch (_) { return { ok: false, raw: txt }; }
   }
 
-  // 2) For each location: create draft → generate AI (fail-open per location)
+  // 2) For each location: decide → create draft → generate AI (fail-open per location)
+  // HARD GATES (manual publishing constraint):
+  // - Max: 1 draft per 7 days (weekly cap)
+  // - Min: 1 draft per 30 days (monthly floor)
+  const MIN_DAYS = 7;
+  const MAX_DAYS = 30;
+
+  // Helpers
+  const parseD1DateToMs = (raw) => {
+    const s = String(raw || "").trim();
+    if (!s) return null;
+
+    // D1 often returns "YYYY-MM-DD HH:MM:SS"
+    // Convert to ISO-ish UTC for Date.parse
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/.test(s)) {
+      const iso = s.replace(" ", "T") + "Z";
+      const ms = Date.parse(iso);
+      return Number.isFinite(ms) ? ms : null;
+    }
+
+    // Already ISO?
+    const ms = Date.parse(s);
+    return Number.isFinite(ms) ? ms : null;
+  };
+
+  const daysSinceMs = (ms) => {
+    if (!Number.isFinite(ms)) return null;
+    return (Date.now() - ms) / (1000 * 60 * 60 * 24);
+  };
+
+  // Add a skip bucket to the output (safe additive change)
+  out.skips = [];
+
   for (const r of rows) {
     const location_id = String(r.location_id || "").trim();
     if (!location_id) continue;
 
     try {
-      // Create draft
+      // ------------------------------------------------------------
+      // (A) Frequency gating (weekly max, monthly min)
+      // ------------------------------------------------------------
+      let lastCreatedAt = null;
+      try {
+        // NOTE: we intentionally use blog_drafts.created_at as the canonical “draft initiation” timestamp.
+        // If you want the cap to key off review issuance instead, swap this to blog_draft_reviews.created_at.
+        const last = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+          SELECT created_at
+            FROM blog_drafts
+           WHERE location_id LIKE ? AND length(location_id) = ?
+             AND deleted_at IS NULL
+           ORDER BY datetime(created_at) DESC
+           LIMIT 1
+        `).bind(location_id, location_id.length).first();
+
+        lastCreatedAt = last?.created_at || null;
+      } catch (e) {
+        // Fail-open: if schema differs (e.g. deleted_at missing), re-try without deleted_at
+        try {
+          const last2 = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+            SELECT created_at
+              FROM blog_drafts
+             WHERE location_id LIKE ? AND length(location_id) = ?
+             ORDER BY datetime(created_at) DESC
+             LIMIT 1
+          `).bind(location_id, location_id.length).first();
+
+          lastCreatedAt = last2?.created_at || null;
+        } catch (_) {}
+      }
+
+      const lastMs = parseD1DateToMs(lastCreatedAt);
+      const ageDays = daysSinceMs(lastMs);
+
+      // If we have a last draft timestamp, apply gates
+      if (ageDays !== null) {
+        // Weekly cap: skip if last < 7 days
+        if (ageDays < MIN_DAYS) {
+          out.skips.push({
+            location_id,
+            reason: "weekly_cap",
+            age_days: Math.round(ageDays * 10) / 10,
+            last_created_at: lastCreatedAt,
+          });
+          continue;
+        }
+
+        // Monthly floor: force if >= 30 days
+        if (ageDays >= MAX_DAYS) {
+          // proceed (forced)
+        } else {
+          // Natural “brain” in the middle window (7–29 days):
+          // probability ramps from 0 → 1 as we approach 30 days
+          const p = (ageDays - MIN_DAYS) / (MAX_DAYS - MIN_DAYS); // 0..~1
+          const roll = Math.random();
+          if (roll > p) {
+            out.skips.push({
+              location_id,
+              reason: "brain_deferred",
+              age_days: Math.round(ageDays * 10) / 10,
+              p: Math.round(p * 1000) / 1000,
+              roll: Math.round(roll * 1000) / 1000,
+              last_created_at: lastCreatedAt,
+            });
+            continue;
+          }
+        }
+      }
+
+      // ------------------------------------------------------------
+      // (B) Create draft
+      // ------------------------------------------------------------
       const created = await createDraftForLocation(ctx, location_id);
       const createdObj = await unwrapJson(created);
 
@@ -2619,7 +2748,9 @@ export async function runAutoCadence(ctx, limit = 25) {
 
       const draft_id = String(createdObj.draft_id);
 
-      // Generate AI (text + visuals)
+      // ------------------------------------------------------------
+      // (C) Generate AI (text + visuals)
+      // ------------------------------------------------------------
       const gen = await generateAiForDraft(ctx, draft_id, { force: false });
       const genObj = await unwrapJson(gen);
 
