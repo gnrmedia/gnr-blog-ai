@@ -2509,7 +2509,13 @@ return jsonResponse(ctx, {
   review: safe,
   draft: draft || null,
   draft_id: safe.draft_id || draft?.draft_id || null,
-  status: draft?.status || safe.status || null,
+  // IMPORTANT:
+  // "status" must reflect REVIEW status, not DRAFT lifecycle status,
+  // otherwise the Review UI will disable editing when draft.status = 'review_link_issued'.
+  status: safe.status || null,
+
+  // Provide draft status explicitly (UI can display it without breaking edit gating)
+  draft_status: draft?.status || null,
   draft_markdown, // <-- NEW: token-authorized markdown for editor prefill
 });
 
