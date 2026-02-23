@@ -185,13 +185,59 @@ export async function onRequest(context) {
 
         const businessName = String(biz?.business_name_raw || "a client").trim();
 
+        // Canonical URLs (do NOT derive from request.origin for cross-host consistency)
+        const apiBase = "https://api.admin.gnrmedia.global";
+        const adminToolUrl = "https://admin.gnrmedia.global/admin/blog-ai.html";
+
+        // Canonical published renderer (View A)
+        const publishedViewUrl =
+          `${apiBase}/api/blog/draft/render/${encodeURIComponent(String(review.draft_id || ""))}?view=generic`;
+
         const html = `
-          <div style="font-family:Arial,sans-serif;line-height:1.5">
-            <h2>Client approved a draft</h2>
-            <p><b>Business:</b> ${escapeHtml(businessName)}</p>
-            <p><b>Location ID:</b> ${escapeHtml(String(review.location_id || ""))}</p>
-            <p><b>Draft ID:</b> ${escapeHtml(String(review.draft_id || ""))}</p>
-            <p>Status is now <b>approved</b>. Publishing will run automatically if enabled.</p>
+          <div style="font-family:Arial,sans-serif;line-height:1.55">
+            <h2>✅ Client approved a draft</h2>
+
+            <p><b>Business:</b> ${escapeHtml(businessName)}<br/>
+               <b>Location ID:</b> <span style="font-family:Consolas,monospace">${escapeHtml(String(review.location_id || ""))}</span><br/>
+               <b>Draft ID:</b> <span style="font-family:Consolas,monospace">${escapeHtml(String(review.draft_id || ""))}</span><br/>
+               <b>Status:</b> approved
+            </p>
+
+            <h3>Links</h3>
+            <ul>
+              <li><b>Published View (copy from here):</b>
+                <a href="${publishedViewUrl}">${publishedViewUrl}</a>
+              </li>
+              <li><b>Blog AI Admin Tool:</b>
+                <a href="${adminToolUrl}">${adminToolUrl}</a>
+              </li>
+            </ul>
+
+            <h3>Manual upload instructions (for now)</h3>
+
+            <p><b>Option 1 — Copy &amp; paste (recommended)</b></p>
+            <ol>
+              <li>Open <b>Published View</b> using the link above.</li>
+              <li>Copy the article content:
+                <ul>
+                  <li>If the platform accepts rich text: select the article on the page and copy/paste directly.</li>
+                  <li>If the platform needs HTML: use your browser’s <b>View Page Source</b>, then copy the HTML inside the article body.</li>
+                </ul>
+              </li>
+              <li>In the client blog editor (GHL/WordPress/etc), paste into the post body (HTML mode if available).</li>
+              <li>Set title/slug/category/featured image as needed, then publish.</li>
+            </ol>
+
+            <p><b>Option 2 — Save as HTML file</b></p>
+            <ol>
+              <li>Open <b>Published View</b>.</li>
+              <li>Right-click → <b>Save as…</b> (or copy the HTML source into a new file named <code>.html</code>).</li>
+              <li>Upload/import the HTML file (only if the platform supports import).</li>
+            </ol>
+
+            <p style="margin-top:14px;color:#666">
+              Note: We are starting with manual upload for safety. Direct publishing will be enabled once platform targets are fully validated.
+            </p>
           </div>
         `;
 
@@ -206,7 +252,9 @@ export async function onRequest(context) {
           const slackText =
             `✅ Draft approved — ${businessName}\n` +
             `• location_id: ${review.location_id}\n` +
-            `• draft_id: ${review.draft_id}`;
+            `• draft_id: ${review.draft_id}\n` +
+            `• Published view: ${publishedViewUrl}\n` +
+            `• Admin tool: ${adminToolUrl}`;
 
           const blocks = [
             {
@@ -219,6 +267,10 @@ export async function onRequest(context) {
                 { type: "mrkdwn", text: `*Location ID:*\n\`${String(review.location_id || "")}\`` },
                 { type: "mrkdwn", text: `*Draft ID:*\n\`${String(review.draft_id || "")}\`` }
               ]
+            },
+            {
+              type: "section",
+              text: { type: "mrkdwn", text: `*Links*\n• <${publishedViewUrl}|Published View>\n• <${adminToolUrl}|Blog AI Admin>` }
             }
           ];
 
