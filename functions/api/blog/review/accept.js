@@ -202,10 +202,22 @@ export async function onRequest(context) {
         const draftTitle = String(draftRow?.title || "").trim();
         const heroUrl = String(heroRow?.image_url || "").trim() || null;
 
-        const seoTitle = draftTitle || `Draft approved — ${businessName}`;
+        const kw = buildSeoKeywords({
+          businessName,
+          title: draftTitle,
+          markdown: draftRow?.content_markdown || "",
+        });
 
-        // Build a clean 100–250 char description from markdown
-        const seoDescription = buildSeoDescription(draftRow?.content_markdown || "", 250);
+        const seoTitle = buildSeoTitle({
+          baseTitle: draftTitle || "Building Trust Through Consistency",
+          keywords: kw.primary,
+        });
+
+        const seoDescription = buildSeoDescriptionWithKeywords({
+          markdown: draftRow?.content_markdown || "",
+          keywords: kw.secondary,
+          maxLen: 250,
+        });
 
         let coverAttachment = null;
 
@@ -256,6 +268,10 @@ export async function onRequest(context) {
             <p>
               <b>Title:</b> ${escapeHtml(seoTitle)}<br/>
               <b>Post Description (100–250 chars):</b> ${escapeHtml(seoDescription)}
+            </p>
+            <p>
+              <b>Suggested Keywords:</b>
+              <span style="font-family:Consolas,monospace">${escapeHtml(kw.secondary.join(", "))}</span>
             </p>
 
             <h3>Cover Image (600×400)</h3>
@@ -465,6 +481,93 @@ function buildSeoDescription(md, maxLen = 250) {
   }
 
   return out;
+}
+
+function extractH2Headings(md) {
+  const lines = String(md || "").split("\n");
+  const h2 = [];
+  for (const line of lines) {
+    const m = line.match(/^\s*##\s+(.*)$/);
+    if (m && m[1]) h2.push(String(m[1]).trim());
+  }
+  return h2.slice(0, 6);
+}
+
+function tokenizeForKeywords(s) {
+  const stop = new Set([
+    "the", "and", "for", "with", "from", "into", "your", "you", "how", "why", "what",
+    "this", "that", "are", "is", "to", "of", "in", "on", "a", "an", "as", "at", "by",
+    "through", "using", "use", "can", "will", "not", "be", "it", "we", "our",
+  ]);
+
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((x) => x.trim())
+    .filter((x) => x && x.length >= 4 && !stop.has(x));
+}
+
+function buildSeoKeywords({ businessName, title, markdown }) {
+  const h2 = extractH2Headings(markdown);
+  const tokens = [
+    ...tokenizeForKeywords(title),
+    ...h2.flatMap(tokenizeForKeywords),
+  ];
+
+  const freq = new Map();
+  for (const t of tokens) freq.set(t, (freq.get(t) || 0) + 1);
+
+  const ranked = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([w]) => w);
+
+  const pillars = [
+    "visibility",
+    "trust",
+    "consistency",
+    "authority",
+    "marketing",
+    "strategy",
+  ];
+
+  const primary = [];
+  if (businessName) primary.push(`${businessName} marketing`);
+  primary.push("marketing strategy");
+  primary.push("build trust");
+  primary.push("online visibility");
+
+  const secondary = [...new Set([...pillars, ...ranked])].slice(0, 12);
+
+  return { primary, secondary };
+}
+
+function buildSeoTitle({ baseTitle, keywords }) {
+  const t = String(baseTitle || "").trim();
+  const kw = (Array.isArray(keywords) ? keywords : []).filter(Boolean);
+  const suffix = kw[1] || kw[0] || "";
+  if (!suffix) return t;
+
+  const candidate = `${t} | ${suffix}`;
+  return candidate.length <= 70 ? candidate : t;
+}
+
+function buildSeoDescriptionWithKeywords({ markdown, keywords, maxLen = 250 }) {
+  let desc = buildSeoDescription(markdown, maxLen);
+  const kw = (Array.isArray(keywords) ? keywords : []).filter(Boolean);
+
+  const lower = desc.toLowerCase();
+  const needed = kw.filter((k) => !lower.includes(String(k).toLowerCase())).slice(0, 3);
+
+  if (needed.length) {
+    const add = ` Keywords: ${needed.join(", ")}.`;
+    if ((desc + add).length <= maxLen) {
+      desc += add;
+    }
+  }
+
+  if (desc.length > maxLen) desc = `${desc.slice(0, maxLen - 1).trim()}…`;
+  return desc;
 }
 
 function arrayBufferToBase64(buf) {
