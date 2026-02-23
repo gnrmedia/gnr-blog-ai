@@ -161,6 +161,7 @@ export async function onRequest(context) {
           SELECT DISTINCT user_email
             FROM agency_location_assignments
            WHERE location_id = ?
+             AND source = 'ghl'
              AND user_email IS NOT NULL
              AND TRIM(user_email) <> ''
         `).bind(String(review.location_id || "").trim()).all();
