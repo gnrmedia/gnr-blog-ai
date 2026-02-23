@@ -33,6 +33,17 @@ export default {
       return withCors(request, res);
     }
 
+    // ------------------------------------------------------------
+    // GET /api/blog/notify/assignees  (Who will be notified on Accept)
+    // ------------------------------------------------------------
+    if (request.method === "GET" && pathname === "/api/blog/notify/assignees") {
+      const admin = await requireAdmin(context);
+      if (admin instanceof Response) return withCors(request, admin);
+
+      const { onRequest } = await import("./functions/api/blog/notify/assignees.js");
+      return withCors(request, await onRequest(context));
+    }
+
     
     // ------------------------------------------------------------
     // GET /api/blog/drafts/list  (Draft history per location)
