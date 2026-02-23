@@ -1996,6 +1996,8 @@ export async function listDraftsForLocation(ctx, locationid, limit = 20) {
       location_id,
       status,
       title,
+      context_quality,
+      context_quality_reason,
       created_at,
       updated_at,
       approved_at
