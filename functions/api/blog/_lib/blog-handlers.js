@@ -280,6 +280,50 @@ const fetchContextText = async (url, { maxChars = 6000, timeoutMs = 8000 } = {})
       finally { clearTimeout(t); }
 };
 
+function isTxtPassport(file) {
+  const name = String(file?.name || "").toLowerCase();
+  return name.endsWith(".txt");
+}
+
+async function fetchMediaFilesForLocation(context, location_id) {
+  const { env } = context;
+  if (!env.GHL_GNR_API_KEY || !location_id) return [];
+
+  const ghlKey = typeof env.GHL_GNR_API_KEY.get === "function"
+    ? await env.GHL_GNR_API_KEY.get()
+    : env.GHL_GNR_API_KEY;
+
+  const url = `https://services.leadconnectorhq.com/medias/files?locationId=${encodeURIComponent(location_id)}&limit=1000`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${ghlKey}`,
+      Version: "2021-07-28",
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  const items =
+    (Array.isArray(data?.files) && data.files) ||
+    (Array.isArray(data?.data?.files) && data.data.files) ||
+    (Array.isArray(data?.items) && data.items) ||
+    [];
+
+  return items.map((m) => ({
+    raw: m,
+    name: m?.name || m?.fileName || "",
+    url:
+      m?.url ||
+      m?.publicUrl ||
+      m?.downloadUrl ||
+      m?.fileUrl ||
+      m?.hostedUrl ||
+      null,
+  }));
+}
+
 // ============================================================
 // MARKETING PASSPORT RESOLVER (AUTHORITATIVE SOURCE)
 // ============================================================
@@ -298,64 +342,35 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
 // ---------- 1) GHL Media Storage (PRIMARY) ----------
   try {
     if (env.GHL_GNR_API_KEY && location_id) {
-      const ghlKey = typeof env.GHL_GNR_API_KEY.get === "function"
-        ? await env.GHL_GNR_API_KEY.get()
-        : env.GHL_GNR_API_KEY;
-
-      // HighLevel Media Storage listing
-      const url = `https://services.leadconnectorhq.com/medias/files?locationId=${encodeURIComponent(location_id)}&limit=1000`;
-
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${ghlKey}`,
-          Version: "2021-07-28",
-          Accept: "application/json",
-        },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-
-        // Defensive parsing: API shapes vary
-        const items =
-          (Array.isArray(data?.files) && data.files) ||
-          (Array.isArray(data?.data?.files) && data.data.files) ||
-          (Array.isArray(data?.items) && data.items) ||
-          [];
-
+      const mediaFiles = await fetchMediaFilesForLocation({ env }, location_id);
+      if (mediaFiles.length) {
         const abnNorm = norm(abn);
         const nameNorm = norm(businessName);
 
-        const extRank = (name) => {
-          const n = String(name || "").toLowerCase();
-          if (n.endsWith(".txt")) return 1;
-          if (n.endsWith(".md")) return 2;
-          if (n.endsWith(".html") || n.endsWith(".htm")) return 3;
-          if (n.endsWith(".pdf")) return 9;
-          return 5;
-        };
+        const txtCandidates = mediaFiles.filter(isTxtPassport);
+        if (!txtCandidates.length) {
+          return {
+            found: false,
+            reason: "no_txt_passport_found",
+            candidates_seen: mediaFiles.length,
+            txt_only_enforced: true,
+          };
+        }
 
-        const candidates = items
-          .map((m) => {
-            const name = m?.name || m?.fileName || "";
+        const candidates = txtCandidates
+          .map((file) => {
+            const name = file?.name || "";
             const n = norm(name);
             const abnHit = abnNorm && n.includes(abnNorm);
             const nameHit = nameNorm && n.includes(nameNorm);
-            return { m, name, abnHit, nameHit };
+            return { file, abnHit, nameHit };
           })
-          .filter((x) => x.abnHit || x.nameHit)
-          .sort((a, b) => extRank(a.name) - extRank(b.name));
+          .filter((x) => x.abnHit || x.nameHit);
 
-        const pick = candidates[0]?.m;
+        const pick = candidates[0]?.file;
         if (pick) {
           const basis = candidates[0].abnHit ? "abn" : "business_name";
-          const fileUrl =
-            pick?.url ||
-            pick?.publicUrl ||
-            pick?.downloadUrl ||
-            pick?.fileUrl ||
-            pick?.hostedUrl ||
-            null;
+          const fileUrl = pick?.url || null;
 
           if (fileUrl) {
             return {
@@ -404,6 +419,45 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
   }
 
   return result;
+}
+
+export async function resolveMarketingPassportTest(context, location_id) {
+  const { env } = context;
+
+  const biz = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT business_name_raw, abn, marketing_passport_url
+    FROM businesses
+    WHERE location_id = ?
+    LIMIT 1
+  `).bind(location_id).first();
+
+  if (!biz) {
+    return new Response(JSON.stringify({ ok: false, error: "Business not found" }, null, 2));
+  }
+
+  const mediaFiles = await fetchMediaFilesForLocation(context, location_id);
+
+  const txtFiles = mediaFiles.filter((f) =>
+    String(f?.name || "").toLowerCase().endsWith(".txt")
+  );
+
+  return new Response(JSON.stringify({
+    ok: true,
+    location_id,
+    business_name_raw: biz.business_name_raw,
+    abn: biz.abn || null,
+    d1_marketing_passport_url: biz.marketing_passport_url || null,
+    discovery: {
+      total_files_seen: mediaFiles.length,
+      txt_candidates: txtFiles.map((f) => ({
+        name: f.name,
+        url: f.url,
+      })),
+      enforced_rule: "txt_only",
+    },
+  }, null, 2), {
+    headers: { "content-type": "application/json" },
+  });
 }
 // ============================================================
 // MARKDOWN → HTML (snarkdown-style + sanitizer)

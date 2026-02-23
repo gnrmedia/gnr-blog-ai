@@ -325,6 +325,31 @@ if (request.method === "POST" && pathname === "/api/blog/publisher/ghl/token") {
   return withCors(request, await onRequest(context));
 }
 
+    // ------------------------------------------------------------
+    // GET /api/blog/passport/resolve
+    // ------------------------------------------------------------
+    if (request.method === "GET" && pathname === "/api/blog/passport/resolve") {
+      const admin = await requireAdmin(context);
+      if (admin instanceof Response) return withCors(request, admin);
+
+      const location_id = url.searchParams.get("location_id");
+      if (!location_id) {
+        return withCors(
+          request,
+          new Response(JSON.stringify({ ok: false, error: "Missing location_id" }, null, 2),
+            { status: 400, headers: { "content-type": "application/json" } }
+          )
+        );
+      }
+
+      const { resolveMarketingPassportTest } = await import(
+        "./functions/api/blog/_lib/blog-handlers.js"
+      );
+
+      const result = await resolveMarketingPassportTest(context, location_id);
+      return withCors(request, result);
+    }
+
     
     // ------------------------------------------------------------
     // 404
