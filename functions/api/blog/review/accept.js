@@ -201,6 +201,41 @@ export async function onRequest(context) {
           html,
         });
 
+        // Slack notify (fail-open)
+        try {
+          const slackText =
+            `✅ Draft approved — ${businessName}\n` +
+            `• location_id: ${review.location_id}\n` +
+            `• draft_id: ${review.draft_id}`;
+
+          const blocks = [
+            {
+              type: "section",
+              text: { type: "mrkdwn", text: `*✅ Draft approved*\n*Business:* ${businessName}` }
+            },
+            {
+              type: "section",
+              fields: [
+                { type: "mrkdwn", text: `*Location ID:*\n\`${String(review.location_id || "")}\`` },
+                { type: "mrkdwn", text: `*Draft ID:*\n\`${String(review.draft_id || "")}\`` }
+              ]
+            }
+          ];
+
+          await sendSlackWebhook(env, { text: slackText, blocks });
+
+          console.log("SLACK_NOTIFY_SENT", {
+            draft_id: review.draft_id,
+            location_id: review.location_id
+          });
+
+        } catch (e) {
+          console.log("SLACK_NOTIFY_FAIL_OPEN", {
+            draft_id: review.draft_id,
+            error: String(e?.message || e)
+          });
+        }
+
         console.log("TEAM_NOTIFY_SENT", { draft_id: review.draft_id, location_id: review.location_id, to_count: emails.length });
       } catch (e) {
         console.log("TEAM_NOTIFY_FAIL_OPEN", { draft_id: review.draft_id, error: String(e?.message || e) });
@@ -277,6 +312,26 @@ async function sendSendgridEmail(env, { to, subject, html }) {
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`SendGrid failed: ${res.status} ${txt.slice(0, 600)}`);
+  }
+}
+
+async function sendSlackWebhook(env, { text, blocks }) {
+  const webhookUrl = String(await envString(env, "SLACK_WEBHOOK_URL") || "").trim();
+  if (!webhookUrl) throw new Error("Missing SLACK_WEBHOOK_URL");
+
+  const payload = {};
+  if (text) payload.text = String(text);
+  if (blocks) payload.blocks = blocks;
+
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Slack webhook failed: ${res.status} ${txt.slice(0, 600)}`);
   }
 }
 
