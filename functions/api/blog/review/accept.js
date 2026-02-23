@@ -183,7 +183,56 @@ export async function onRequest(context) {
            LIMIT 1
         `).bind(String(review.location_id || "").trim()).first();
 
+        const draftRow = await db.prepare(`
+          SELECT title, content_markdown
+            FROM blog_drafts
+           WHERE draft_id = ?
+           LIMIT 1
+        `).bind(String(review.draft_id || "").trim()).first();
+
+        const heroRow = await db.prepare(`
+          SELECT image_url
+            FROM blog_draft_assets
+           WHERE draft_id = ?
+             AND lower(visual_key) = 'hero'
+           LIMIT 1
+        `).bind(String(review.draft_id || "").trim()).first();
+
         const businessName = String(biz?.business_name_raw || "a client").trim();
+        const draftTitle = String(draftRow?.title || "").trim();
+        const heroUrl = String(heroRow?.image_url || "").trim() || null;
+
+        const seoTitle = draftTitle || `Draft approved — ${businessName}`;
+
+        // Build a clean 100–250 char description from markdown
+        const seoDescription = buildSeoDescription(draftRow?.content_markdown || "", 250);
+
+        let coverAttachment = null;
+
+        try {
+          if (heroUrl) {
+            // Resize to 600x400 (cover) and attach as PNG
+            const { b64, mime, filename } = await fetchResizedImageAsAttachment(heroUrl, {
+              width: 600,
+              height: 400,
+              fit: "cover",
+              format: "png",
+              filename: "cover-600x400.png",
+            });
+
+            coverAttachment = {
+              content: b64,
+              type: mime,
+              filename,
+              disposition: "attachment",
+            };
+          }
+        } catch (e) {
+          console.log("COVER_IMAGE_ATTACH_FAIL_OPEN", {
+            draft_id: review.draft_id,
+            error: String(e?.message || e),
+          });
+        }
 
         // Canonical URLs (do NOT derive from request.origin for cross-host consistency)
         const apiBase = "https://api.admin.gnrmedia.global";
@@ -195,7 +244,7 @@ export async function onRequest(context) {
 
         const html = `
           <div style="font-family:Arial,sans-serif;line-height:1.55">
-            <h2>✅ Client approved a draft</h2>
+            <h2>✅ Client approved — ready for manual posting</h2>
 
             <p><b>Business:</b> ${escapeHtml(businessName)}<br/>
                <b>Location ID:</b> <span style="font-family:Consolas,monospace">${escapeHtml(String(review.location_id || ""))}</span><br/>
@@ -203,36 +252,43 @@ export async function onRequest(context) {
                <b>Status:</b> approved
             </p>
 
+            <h3>SEO (use these in GHL “Edit Blog Post SEO”)</h3>
+            <p>
+              <b>Title:</b> ${escapeHtml(seoTitle)}<br/>
+              <b>Post Description (100–250 chars):</b> ${escapeHtml(seoDescription)}
+            </p>
+
+            <h3>Cover Image (600×400)</h3>
+            <p>
+              ${coverAttachment
+                ? "✅ Attached to this email as <b>cover-600x400.png</b> (upload it as the Cover Image in GHL)."
+                : (heroUrl ? `⚠️ Could not attach resized cover image. Use the hero image URL manually:<br/><span style="font-family:Consolas,monospace">${escapeHtml(heroUrl)}</span>` : "⚠️ No hero image found for this draft (cover image required in GHL).")}
+            </p>
+
             <h3>Links</h3>
             <ul>
-              <li><b>Published View (copy from here):</b>
-                <a href="${publishedViewUrl}">${publishedViewUrl}</a>
-              </li>
-              <li><b>Blog AI Admin Tool:</b>
-                <a href="${adminToolUrl}">${adminToolUrl}</a>
-              </li>
+              <li><b>Published View (copy from here):</b> <a href="${publishedViewUrl}">${publishedViewUrl}</a></li>
+              <li><b>Blog AI Admin Tool:</b> <a href="${adminToolUrl}">${adminToolUrl}</a></li>
             </ul>
 
-            <h3>Manual upload instructions (for now)</h3>
+            <h3>Manual upload instructions (GHL)</h3>
 
-            <p><b>Option 1 — Copy &amp; paste (recommended)</b></p>
             <ol>
-              <li>Open <b>Published View</b> using the link above.</li>
+              <li>Open the <b>Published View</b> link above.</li>
               <li>Copy the article content:
                 <ul>
-                  <li>If the platform accepts rich text: select the article on the page and copy/paste directly.</li>
-                  <li>If the platform needs HTML: use your browser’s <b>View Page Source</b>, then copy the HTML inside the article body.</li>
+                  <li>If GHL editor accepts rich text: select the article content and copy/paste into the blog post body.</li>
+                  <li>If you need HTML: use <b>View Page Source</b> and copy the relevant article/body HTML into GHL’s HTML mode (if available).</li>
                 </ul>
               </li>
-              <li>In the client blog editor (GHL/WordPress/etc), paste into the post body (HTML mode if available).</li>
-              <li>Set title/slug/category/featured image as needed, then publish.</li>
-            </ol>
-
-            <p><b>Option 2 — Save as HTML file</b></p>
-            <ol>
-              <li>Open <b>Published View</b>.</li>
-              <li>Right-click → <b>Save as…</b> (or copy the HTML source into a new file named <code>.html</code>).</li>
-              <li>Upload/import the HTML file (only if the platform supports import).</li>
+              <li>In GHL, open <b>Edit Blog Post SEO</b> and set:
+                <ul>
+                  <li><b>Title</b> = the Title above</li>
+                  <li><b>Post Description</b> = the Description above</li>
+                  <li><b>Cover Image</b> = upload the attached <b>cover-600x400.png</b></li>
+                </ul>
+              </li>
+              <li>Publish the post.</li>
             </ol>
 
             <p style="margin-top:14px;color:#666">
@@ -245,6 +301,7 @@ export async function onRequest(context) {
           to: emails,
           subject: `✅ Draft approved — ${businessName}`,
           html,
+          attachments: coverAttachment ? [coverAttachment] : [],
         });
 
         // Slack notify (fail-open)
@@ -336,7 +393,7 @@ async function envString(env, key) {
   return String(v || "");
 }
 
-async function sendSendgridEmail(env, { to, subject, html }) {
+async function sendSendgridEmail(env, { to, subject, html, attachments = [] }) {
   const apiKey = (await envString(env, "SENDGRID_API_KEY_GNRMEDIA")).trim();
   if (!apiKey) throw new Error("Missing SENDGRID_API_KEY_GNRMEDIA");
 
@@ -352,6 +409,10 @@ async function sendSendgridEmail(env, { to, subject, html }) {
     content: [{ type: "text/html", value: html }],
   };
 
+  if (Array.isArray(attachments) && attachments.length) {
+    payload.attachments = attachments;
+  }
+
   const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
     method: "POST",
     headers: {
@@ -365,6 +426,92 @@ async function sendSendgridEmail(env, { to, subject, html }) {
     const txt = await res.text().catch(() => "");
     throw new Error(`SendGrid failed: ${res.status} ${txt.slice(0, 600)}`);
   }
+}
+
+function stripMdForSeo(md) {
+  let s = String(md || "");
+
+  // Remove internal comments and visual tokens
+  s = s.replace(/<!--[\s\S]*?-->/g, " ");
+  s = s.replace(/GNRVISUALTOKEN:[a-z0-9\-]+/gi, " ");
+  s = s.replace(/_?GNRVISUAL_?:[a-z0-9_\-]+/gi, " ");
+
+  // Remove markdown headings + formatting
+  s = s.replace(/^\s*#{1,6}\s+/gm, "");
+  s = s.replace(/[*_`>#]/g, " ");
+
+  // Collapse whitespace
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
+function buildSeoDescription(md, maxLen = 250) {
+  const cleaned = stripMdForSeo(md);
+  if (!cleaned) return "";
+
+  // Aim for 100–250 chars as per GHL guidance
+  let out = cleaned.slice(0, maxLen).trim();
+
+  // Avoid cutting mid-word if possible
+  if (cleaned.length > maxLen) {
+    const lastSpace = out.lastIndexOf(" ");
+    if (lastSpace > 120) out = out.slice(0, lastSpace).trim();
+    out = out.replace(/[,\s]+$/g, "") + "…";
+  }
+
+  // Enforce minimum-ish usefulness
+  if (out.length < 80 && cleaned.length > out.length) {
+    out = cleaned.slice(0, Math.min(200, cleaned.length)).trim();
+  }
+
+  return out;
+}
+
+function arrayBufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+// Uses Cloudflare Image Resizing (via fetch cf options) to produce exact 600x400 cover image
+async function fetchResizedImageAsAttachment(url, { width, height, fit = "cover", format = "png", filename }) {
+  const src = String(url || "").trim();
+  if (!src) throw new Error("Missing image url");
+
+  const res = await fetch(src, {
+    cf: {
+      image: {
+        width,
+        height,
+        fit,
+        format,
+      },
+    },
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Image fetch/resize failed: ${res.status} ${txt.slice(0, 200)}`);
+  }
+
+  const mime = res.headers.get("content-type") || (format === "png" ? "image/png" : "image/jpeg");
+  const buf = await res.arrayBuffer();
+  const b64 = arrayBufferToBase64(buf);
+
+  // Guardrail: if attachment too big (rare for 600x400), fail-open
+  if (b64.length > 6_000_000) {
+    throw new Error("Resized image too large to attach");
+  }
+
+  return {
+    b64,
+    mime,
+    filename: filename || `cover-${width}x${height}.${format}`,
+  };
 }
 
 async function sendSlackWebhook(env, { text, blocks }) {
