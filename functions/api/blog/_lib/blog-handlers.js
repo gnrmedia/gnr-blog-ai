@@ -363,9 +363,20 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
             const n = norm(name);
             const abnHit = abnNorm && n.includes(abnNorm);
             const nameHit = nameNorm && n.includes(nameNorm);
-            return { file, abnHit, nameHit };
+            return { file, name, abnHit, nameHit };
           })
           .filter((x) => x.abnHit || x.nameHit);
+
+        // Deterministic ordering:
+        // 1) ABN match first
+        // 2) then business name match
+        // 3) then filename alphabetical (stable)
+        candidates.sort((a, b) => {
+          const aScore = a.abnHit ? 0 : 1;
+          const bScore = b.abnHit ? 0 : 1;
+          if (aScore !== bScore) return aScore - bScore;
+          return String(a.name || "").localeCompare(String(b.name || ""));
+        });
 
         const pick = candidates[0]?.file;
         if (pick) {
@@ -389,34 +400,7 @@ async function resolveMarketingPassport({ env, location_id, abn, businessName })
   }
 
   // ---------- 2) gnrmedia.global index (SECONDARY) ----------
-  try {
-    const idxUrl = "https://gnrmedia.global/marketing_passports/index.json";
-    const res = await fetch(idxUrl, { headers: { Accept: "application/json" } });
-    if (res.ok) {
-      const rows = await res.json();
-      const abnNorm = norm(abn);
-      const nameNorm = norm(businessName);
-
-      const hit = Array.isArray(rows)
-        ? rows.find((r) =>
-            norm(r.abn || "").includes(abnNorm) ||
-            norm(r.business_name || "").includes(nameNorm)
-          )
-        : null;
-
-      if (hit?.pdf_url) {
-        return {
-          found: true,
-          source: "gnrmedia_index",
-          url: hit.pdf_url,
-          match_basis: hit.abn ? "abn" : "business_name",
-          confidence: 0.85,
-        };
-      }
-    }
-  } catch (e) {
-    console.log("PASSPORT_INDEX_LOOKUP_FAIL_OPEN", String(e?.message || e));
-  }
+  // Disabled: TXT-only enforcement (do not auto-select PDFs)
 
   return result;
 }
