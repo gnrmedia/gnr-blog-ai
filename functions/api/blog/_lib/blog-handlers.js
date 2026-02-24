@@ -2605,21 +2605,32 @@ async function findLatestPendingReviewDraft(env, location_id) {
   const loc = String(location_id || "").trim();
   if (!loc) return null;
 
-  // NOTE: We cannot re-send the same token (only hashes exist), so we will create a NEW review link.
+  // We want the most recent draft that is not approved/published AND has an active review,
+  // plus the most recent active review timestamp (for cooldown).
   const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
-    SELECT d.draft_id, d.status, d.updated_at, d.created_at
-      FROM blog_drafts d
-     WHERE d.location_id LIKE ? AND length(d.location_id) = ?
-       AND d.deleted_at IS NULL
-       AND lower(d.status) NOT IN ('approved','published')
-       AND EXISTS (
-         SELECT 1
-           FROM blog_draft_reviews r
-          WHERE r.draft_id = d.draft_id
-            AND upper(COALESCE(r.status,'')) IN ('ISSUED','PENDING','AI_VISUALS_GENERATED')
-       )
-     ORDER BY datetime(d.updated_at) DESC, datetime(d.created_at) DESC
-     LIMIT 1
+    SELECT
+      d.draft_id,
+      d.status,
+      d.updated_at,
+      d.created_at,
+      (
+        SELECT MAX(datetime(r.created_at))
+          FROM blog_draft_reviews r
+         WHERE r.draft_id = d.draft_id
+           AND upper(COALESCE(r.status,'')) IN ('ISSUED','PENDING','AI_VISUALS_GENERATED')
+      ) AS last_active_review_at
+    FROM blog_drafts d
+    WHERE d.location_id LIKE ? AND length(d.location_id) = ?
+      AND d.deleted_at IS NULL
+      AND lower(d.status) NOT IN ('approved','published')
+      AND EXISTS (
+        SELECT 1
+          FROM blog_draft_reviews r2
+         WHERE r2.draft_id = d.draft_id
+           AND upper(COALESCE(r2.status,'')) IN ('ISSUED','PENDING','AI_VISUALS_GENERATED')
+      )
+    ORDER BY datetime(d.updated_at) DESC, datetime(d.created_at) DESC
+    LIMIT 1
   `).bind(loc, loc.length).first();
 
   return row?.draft_id ? row : null;
@@ -2631,6 +2642,42 @@ async function resendReviewEmailForDraft(ctx, draft_id) {
 
   const did = String(draft_id || "").trim();
   if (!did) return { ok: false, error: "draft_id required" };
+
+  // ------------------------------------------------------------
+  // COOLDOWN RULE (weekly):
+  // If we created an active review link for this draft within the last 7 days,
+  // do NOT create another token / send another reminder.
+  // ------------------------------------------------------------
+  try {
+    const recent = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      SELECT datetime(created_at) AS created_at
+        FROM blog_draft_reviews
+       WHERE draft_id = ?
+         AND upper(COALESCE(status,'')) IN ('ISSUED','PENDING','AI_VISUALS_GENERATED')
+       ORDER BY datetime(created_at) DESC
+       LIMIT 1
+    `).bind(did).first();
+
+    const last = String(recent?.created_at || "").trim();
+    if (last) {
+      const lastMs = new Date(last.replace(" ", "T") + "Z").getTime();
+      const ageDays = (Date.now() - lastMs) / (1000 * 60 * 60 * 24);
+
+      if (!isNaN(ageDays) && ageDays < 7) {
+        return {
+          ok: true,
+          action: "review_nudge_skipped_cooldown",
+          draft_id: did,
+          last_active_review_at: last,
+          cooldown_days: 7,
+          age_days: Number(ageDays.toFixed(2)),
+        };
+      }
+    }
+  } catch (e) {
+    // Fail-open: if cooldown check fails, proceed (better to remind than silently do nothing)
+    console.log("REVIEW_NUDGE_COOLDOWN_CHECK_FAIL_OPEN", { draft_id: did, error: String(e?.message || e) });
+  }
 
   // Create a NEW review link for this draft (safe: blocked only for approved/published)
   const reviewResp = await createReviewLink(ctx, did, null);
