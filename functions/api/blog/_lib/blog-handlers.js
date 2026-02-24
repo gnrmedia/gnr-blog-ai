@@ -2580,6 +2580,129 @@ export async function getReviewVisualsDebug(ctx, token) {
 }
 
 
+// ============================================================
+// AUTO MODE — COST CONTROL + PENDING REVIEW NUDGE
+// ============================================================
+
+async function countApprovedOrPublished(env, location_id) {
+  const loc = String(location_id || "").trim();
+  if (!loc) return 0;
+
+  const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT COUNT(*) AS c
+      FROM blog_drafts
+     WHERE location_id LIKE ? AND length(location_id) = ?
+       AND lower(status) IN ('approved','published')
+       AND deleted_at IS NULL
+  `).bind(loc, loc.length).first();
+
+  return Number(row?.c || 0) || 0;
+}
+
+// Find latest draft that has an active review outstanding (ISSUED/PENDING/AI_VISUALS_GENERATED)
+// and is NOT approved/published.
+async function findLatestPendingReviewDraft(env, location_id) {
+  const loc = String(location_id || "").trim();
+  if (!loc) return null;
+
+  // NOTE: We cannot re-send the same token (only hashes exist), so we will create a NEW review link.
+  const row = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT d.draft_id, d.status, d.updated_at, d.created_at
+      FROM blog_drafts d
+     WHERE d.location_id LIKE ? AND length(d.location_id) = ?
+       AND d.deleted_at IS NULL
+       AND lower(d.status) NOT IN ('approved','published')
+       AND EXISTS (
+         SELECT 1
+           FROM blog_draft_reviews r
+          WHERE r.draft_id = d.draft_id
+            AND upper(COALESCE(r.status,'')) IN ('ISSUED','PENDING','AI_VISUALS_GENERATED')
+       )
+     ORDER BY datetime(d.updated_at) DESC, datetime(d.created_at) DESC
+     LIMIT 1
+  `).bind(loc, loc.length).first();
+
+  return row?.draft_id ? row : null;
+}
+
+// Re-send approval email by creating a fresh review link for the SAME draft (no AI cost).
+async function resendReviewEmailForDraft(ctx, draft_id) {
+  const { env } = ctx;
+
+  const did = String(draft_id || "").trim();
+  if (!did) return { ok: false, error: "draft_id required" };
+
+  // Create a NEW review link for this draft (safe: blocked only for approved/published)
+  const reviewResp = await createReviewLink(ctx, did, null);
+
+  // unwrap jsonResponse() Response into object
+  let reviewObj = null;
+  if (reviewResp instanceof Response) {
+    const txt = await reviewResp.text().catch(() => "");
+    try { reviewObj = JSON.parse(txt || "{}"); } catch (_) { reviewObj = { ok: false, raw: txt }; }
+  } else {
+    reviewObj = reviewResp;
+  }
+
+  if (!reviewObj?.ok || !reviewObj?.review_url) {
+    return { ok: false, error: "review_link_create_failed", detail: reviewObj || null };
+  }
+
+  // Find recipient
+  const draftRow = await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT location_id
+      FROM blog_drafts
+     WHERE draft_id = ?
+     LIMIT 1
+  `).bind(did).first();
+
+  const loc = String(draftRow?.location_id || "").trim();
+  const biz = loc ? await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+    SELECT business_name_raw, contact_email
+      FROM businesses
+     WHERE location_id LIKE ? AND length(location_id) = ?
+     LIMIT 1
+  `).bind(loc, loc.length).first() : null;
+
+  const recipient = String(biz?.contact_email || "").trim();
+  if (!recipient) {
+    return {
+      ok: true,
+      action: "review_link_created_no_email",
+      draft_id: did,
+      review_url: reviewObj.review_url,
+      reason: "missing_contact_email",
+    };
+  }
+
+  try {
+    await sendSendgridEmail(env, {
+      to: recipient,
+      subject: "Reminder: please approve your GNR Media article",
+      html: buildReviewEmailHtml({
+        businessName: biz?.business_name_raw || "your business",
+        reviewUrl: reviewObj.review_url,
+      }),
+    });
+  } catch (e) {
+    return {
+      ok: true,
+      action: "review_link_created_email_failed_open",
+      draft_id: did,
+      review_url: reviewObj.review_url,
+      error: String(e?.message || e),
+    };
+  }
+
+  return {
+    ok: true,
+    action: "review_email_resent",
+    draft_id: did,
+    review_url: reviewObj.review_url,
+  };
+}
+
+
 // ---------- Program management ----------
 export async function addProgram(ctx, payload = {}) {
   const { env, request } = ctx;
@@ -2687,7 +2810,79 @@ export async function removeProgram(ctx) {
 }
 
 export async function setProgramMode(ctx, programid, mode) {
-      // TODO: implement
+  const { env } = ctx;
+
+  const location_id = normaliseLocationId(programid);
+  const run_mode = String(mode || "").trim().toLowerCase();
+
+  if (!location_id) return errorResponse(ctx, "location_id required", 400);
+  if (!["manual", "auto"].includes(run_mode)) {
+    return errorResponse(ctx, "run_mode must be 'auto' or 'manual'", 400, { received: mode });
+  }
+
+  // Persist (schema-tolerant)
+  try {
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      UPDATE blog_program_locations
+         SET run_mode = ?,
+             updated_at = datetime('now')
+       WHERE location_id = ?
+    `).bind(run_mode, location_id).run();
+  } catch (e) {
+    // If updated_at column missing in some envs, fall back
+    await env.GNR_MEDIA_BUSINESS_DB.prepare(`
+      UPDATE blog_program_locations
+         SET run_mode = ?
+       WHERE location_id = ?
+    `).bind(run_mode, location_id).run();
+  }
+
+  // AUTO MODE COST RULE:
+  // If switching to AUTO and there is already a pending review draft, do NOT generate.
+  // Instead, re-send the approval email (fresh review link for same draft).
+  // If there is no approved history AND no pending review, bootstrap by generating one immediately.
+  if (run_mode === "auto") {
+    const pending = await findLatestPendingReviewDraft(env, location_id);
+
+    if (pending?.draft_id) {
+      // Nudge approval (no AI cost)
+      const nudge = await resendReviewEmailForDraft(ctx, pending.draft_id);
+      return jsonResponse(ctx, {
+        ok: true,
+        action: "mode_set_auto_nudged_pending_review",
+        location_id,
+        run_mode,
+        pending_draft_id: pending.draft_id,
+        nudge,
+      });
+    }
+
+    const approvedCount = await countApprovedOrPublished(env, location_id);
+    if (approvedCount === 0) {
+      // Bootstrap immediately (first article seed)
+      // NOTE: This is the only time we auto-generate immediately on mode switch.
+      const resultResp = await runNowForLocation(ctx, location_id);
+
+      // unwrap for safe return
+      let obj = null;
+      if (resultResp instanceof Response) {
+        const txt = await resultResp.text().catch(() => "");
+        try { obj = JSON.parse(txt || "{}"); } catch (_) { obj = { ok: false, raw: txt }; }
+      } else {
+        obj = resultResp;
+      }
+
+      return jsonResponse(ctx, {
+        ok: true,
+        action: "mode_set_auto_bootstrap_generated",
+        location_id,
+        run_mode,
+        bootstrap: obj,
+      });
+    }
+  }
+
+  return jsonResponse(ctx, { ok: true, action: "mode_set", location_id, run_mode });
 }
 export async function setProgramModeBulk(ctx, updates = {}) {
       // TODO: implement
@@ -2817,6 +3012,25 @@ export async function runAutoCadence(ctx, limit = 25) {
         if (Math.random() > weeklyBias) {
           continue;
         }
+      }
+
+      // ------------------------------------------------------------
+      // COST CONTROL RULE:
+      // If a draft is already out for review (not approved), do NOT generate a new one.
+      // Instead: send a reminder email (new review link for the same draft).
+      // ------------------------------------------------------------
+      const pending = await findLatestPendingReviewDraft(env, location_id);
+      if (pending?.draft_id) {
+        const nudge = await resendReviewEmailForDraft(ctx, pending.draft_id);
+
+        out.skips.push({
+          location_id,
+          reason: "pending_review_exists_nudged",
+          pending_draft_id: pending.draft_id,
+          nudge,
+        });
+
+        continue;
       }
 
       // ------------------------------------------------------------
