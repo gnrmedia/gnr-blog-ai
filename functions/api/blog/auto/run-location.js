@@ -13,7 +13,7 @@ export async function onRequest(context) {
     });
   }
 
-  const admin = requireAdmin(context);
+  const admin = await requireAdmin(context);
   if (admin instanceof Response) return admin;
 
   let body = {};
