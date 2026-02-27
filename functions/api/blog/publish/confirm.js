@@ -54,13 +54,15 @@ export async function onRequest(context){
   if(!resp.ok) return json({ok:false,error:"url_not_reachable"},400);
 
   const html=await resp.text();
+  const page = html.toLowerCase();
 
-  const titleMatch = html.toLowerCase().includes((draft.title||"").toLowerCase());
-  const snippetMatch = html.toLowerCase().includes(
-    (draft.content_markdown||"").slice(0,120).toLowerCase()
-  );
+  const titleNeedle = String(draft.title || "").trim().toLowerCase();
+  const snippetNeedle = String(draft.content_markdown || "").trim().slice(0, 120).toLowerCase();
 
-  if(!titleMatch && !snippetMatch){
+  const titleMatch = titleNeedle.length >= 6 && page.includes(titleNeedle); // avoid trivial matches
+  const snippetMatch = snippetNeedle.length >= 30 && page.includes(snippetNeedle); // avoid "" / tiny snippets
+
+  if (!titleMatch && !snippetMatch) {
     return json({ok:false,error:"content_not_detected"},400);
   }
 
