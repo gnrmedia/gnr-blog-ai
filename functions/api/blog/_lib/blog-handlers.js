@@ -3208,6 +3208,32 @@ export async function runAutoCadence(ctx, limit = 25) {
           draft_id: pendingApproved.draft_id,
         });
 
+        // ------------------------------------------------------------
+        // Reminder cooldown (prevents spam if auto cadence runs often)
+        // ------------------------------------------------------------
+        const cooldownHours = 72; // 3 days
+        const row = await db.prepare(`
+          SELECT last_reminder_at
+            FROM blog_publish_onboarding
+           WHERE location_id = ?
+           LIMIT 1
+        `).bind(location_id).first();
+
+        const lastMs = row?.last_reminder_at ? Date.parse(String(row.last_reminder_at)) : 0;
+        const nowMs = Date.now();
+
+        if (lastMs && !Number.isNaN(lastMs)) {
+          const ageHours = (nowMs - lastMs) / (1000 * 60 * 60);
+          if (ageHours < cooldownHours) {
+            console.log("PUBLISH_REMINDER_SKIPPED_COOLDOWN", {
+              location_id,
+              hours_since_last: Math.round(ageHours * 10) / 10,
+              cooldownHours,
+            });
+            continue; // skip this location, still blocked but no repeat email
+          }
+        }
+
         // Send reminder, then SKIP this location (do not generate)
         try {
           await sendClientPublishReminder(env, db, {
@@ -3215,6 +3241,14 @@ export async function runAutoCadence(ctx, limit = 25) {
             draftId: pendingApproved.draft_id,
             title: pendingApproved.title,
           });
+
+          await db.prepare(`
+            INSERT INTO blog_publish_onboarding (location_id, updated_at, last_reminder_at)
+            VALUES (?, datetime('now'), datetime('now'))
+            ON CONFLICT(location_id) DO UPDATE SET
+              last_reminder_at = datetime('now'),
+              updated_at = datetime('now')
+          `).bind(location_id).run();
         } catch (e) {
           console.log("PUBLISH_REMINDER_FAIL_OPEN", String(e?.message || e));
         }
