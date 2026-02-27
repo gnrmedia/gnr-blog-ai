@@ -42,6 +42,13 @@ export async function onRequest(context) {
     <label><b>Website login page URL</b></label><br/>
     <input id="wp_base_url" type="text" placeholder="https://yourdomain.com" />
     <p class="muted">Tip: use the main site URL (we’ll guide staff to the login path). Example: https://clientdomain.com</p>
+    <br/><br/>
+
+    <label><b>Blog Page URL (required)</b></label><br/>
+    <input id="blog_url" type="text" placeholder="https://yourdomain.com/blog" />
+    <p class="muted">
+    This is the public page where your articles appear (e.g. /blog, /news, /articles).
+    </p>
 
     <button class="btn" id="btnOption1">Submit (GNR uploads)</button>
     <div id="msg1" class="muted"></div>
@@ -72,14 +79,27 @@ async function postSubmit(payload){
 
 document.getElementById("btnOption1").addEventListener("click", async () => {
   const wp_base_url = String(document.getElementById("wp_base_url").value || "").trim();
-  const out = await postSubmit({ t: token, mode: "GNR_UPLOADS", wp_base_url });
+  const blog_url = String(document.getElementById("blog_url").value || "").trim();
+
+  const out = await postSubmit({
+    t: token,
+    mode: "GNR_UPLOADS",
+    wp_base_url,
+    blog_url
+  });
   document.getElementById("msg1").textContent = out?.ok
     ? "Thanks — we’ve got it. Our team will confirm access and proceed."
     : ("Error: " + (out?.error || "submit_failed"));
 });
 
 document.getElementById("btnOption2").addEventListener("click", async () => {
-  const out = await postSubmit({ t: token, mode: "CLIENT_UPLOADS" });
+  const blog_url = String(document.getElementById("blog_url").value || "").trim();
+
+  const out = await postSubmit({
+    t: token,
+    mode: "CLIENT_UPLOADS",
+    blog_url
+  });
   document.getElementById("msg2").innerHTML = out?.ok
     ? (out?.instructions_html || "Confirmed.")
     : ("Error: " + (out?.error || "submit_failed"));

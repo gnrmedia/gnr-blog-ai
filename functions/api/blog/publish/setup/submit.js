@@ -33,6 +33,20 @@ function normalizeBaseUrl(u) {
   }
 }
 
+function normalizeUrl(u) {
+  let s = String(u || "").trim();
+  if (!s) return "";
+  if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+  try {
+    const url = new URL(s);
+    url.hash = "";
+    url.search = "";
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
   if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
@@ -40,6 +54,7 @@ export async function onRequest(context) {
   const body = await request.json().catch(() => ({}));
   const t = String(body.t || "").trim();
   const mode = String(body.mode || "").trim();
+  const blog_url_raw = String(body.blog_url || "").trim();
 
   if (!t) return json({ ok: false, error: "token_required" }, 400);
   if (!["GNR_UPLOADS", "CLIENT_UPLOADS"].includes(mode)) {
@@ -160,6 +175,16 @@ export async function onRequest(context) {
       }
     } catch (_) {}
 
+    const blog_url = normalizeUrl(blog_url_raw);
+    if (!blog_url) return json({ ok: false, error: "blog_url_required" }, 400);
+
+    // Store canonical blog_url
+    await db.prepare(`
+      UPDATE businesses
+         SET blog_url = ?
+       WHERE location_id = ?
+    `).bind(blog_url, location_id).run();
+
     return json({ ok: true, action: "base_url_saved" }, 200);
   }
 
@@ -192,6 +217,16 @@ export async function onRequest(context) {
       <p class="muted">If you get stuck, reply to the email and we’ll help.</p>
     </div>
   `;
+
+  const blog_url = normalizeUrl(blog_url_raw);
+  if (!blog_url) return json({ ok: false, error: "blog_url_required" }, 400);
+
+  // Store canonical blog_url
+  await db.prepare(`
+    UPDATE businesses
+       SET blog_url = ?
+     WHERE location_id = ?
+  `).bind(blog_url, location_id).run();
 
   return json({ ok: true, action: "client_self_upload", instructions_html }, 200);
 }
