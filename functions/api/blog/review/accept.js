@@ -150,6 +150,26 @@ export async function onRequest(context) {
     else console.warn("PUBLISH_NO_WAITUNTIL", review.draft_id);
   } catch (_) {}
 
+  // Determine publish readiness (used for onboarding + suppressing staff notify)
+  let hasTargetsForLocation = false;
+  try {
+    const row = await db.prepare(`
+      SELECT 1
+        FROM publish_targets
+       WHERE location_id = ?
+         AND (is_active = 1 OR is_active IS NULL)
+       LIMIT 1
+    `).bind(String(review.location_id || "").trim()).first();
+
+    hasTargetsForLocation = !!row;
+  } catch (e) {
+    console.log("PUBLISH_TARGETS_CHECK_FAIL_OPEN", {
+      location_id: review.location_id,
+      draft_id: review.draft_id,
+      error: String(e?.message || e),
+    });
+  }
+
   // ------------------------------------------------------------
   // CLIENT PUBLISH SETUP (Article/Blog 74)
   // If there are NO publish_targets for this location, email client with 2 options.
@@ -160,22 +180,27 @@ export async function onRequest(context) {
       try {
         const locationId = String(review.location_id || "").trim();
         const draftId = String(review.draft_id || "").trim();
-        const clientEmail = String(review.client_email || "").trim();
+
+        // Prefer review.client_email; fall back to businesses.contact_email (common when review link created without email)
+        let clientEmail = String(review.client_email || "").trim();
+
+        if (!clientEmail) {
+          const bizEmailRow = await db.prepare(`
+            SELECT contact_email
+              FROM businesses
+             WHERE location_id = ?
+             LIMIT 1
+          `).bind(locationId).first();
+
+          clientEmail = String(bizEmailRow?.contact_email || "").trim();
+        }
 
         if (!locationId || !draftId || !clientEmail) {
           console.log("PUBLISH_SETUP_SKIP_MISSING_FIELDS", { locationId, draftId, hasClientEmail: !!clientEmail });
           return;
         }
 
-        const hasTargets = await db.prepare(`
-          SELECT 1
-            FROM publish_targets
-           WHERE location_id = ?
-             AND (is_active = 1 OR is_active IS NULL)
-           LIMIT 1
-        `).bind(locationId).first();
-
-        if (hasTargets) {
+        if (hasTargetsForLocation) {
           console.log("PUBLISH_SETUP_SKIP_HAS_TARGETS", { locationId, draftId });
           return;
         }
@@ -274,6 +299,13 @@ export async function onRequest(context) {
   // ------------------------------------------------------------
   // TEAM NOTIFY (fail-open, async)
   // ------------------------------------------------------------
+  // If there are no publish targets, we should not ask staff to manually post yet.
+  // The client must complete /publish/setup first (Option 1 triggers staff credential flow).
+  if (!hasTargetsForLocation) {
+    console.log("TEAM_NOTIFY_SKIP_NO_PUBLISH_TARGETS", { location_id: review.location_id, draft_id: review.draft_id });
+    return json({ ok: true, action: "accepted", draft_id: review.draft_id }, 200);
+  }
+
   try {
     const notifyTask = (async () => {
       try {
