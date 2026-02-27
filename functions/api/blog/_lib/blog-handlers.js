@@ -2680,6 +2680,7 @@ async function findLatestApprovedUnpublishedDraft(db, locationId) {
     SELECT draft_id, title, approved_at, published_at, publish_status
       FROM blog_drafts
      WHERE location_id = ?
+       AND deleted_at IS NULL
        AND approved_at IS NOT NULL
        AND (
          published_at IS NULL
