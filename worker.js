@@ -308,11 +308,21 @@ if (request.method === "GET" && pathname === "/publish/setup") {
   return onRequest(context); // HTML response
 }
 
+if (request.method === "GET" && pathname === "/publish/confirm") {
+  const { onRequest } = await import("./functions/publish/confirm/page.js");
+  return onRequest(context);
+}
+
 // ------------------------------------------------------------
 // POST /api/blog/publish/setup/submit (PUBLIC)
 // ------------------------------------------------------------
 if (request.method === "POST" && pathname === "/api/blog/publish/setup/submit") {
   const { onRequest } = await import("./functions/api/blog/publish/setup/submit.js");
+  return withCors(request, await onRequest(context));
+}
+
+if (request.method === "POST" && pathname === "/api/blog/publish/confirm") {
+  const { onRequest } = await import("./functions/api/blog/publish/confirm.js");
   return withCors(request, await onRequest(context));
 }
 
