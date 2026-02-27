@@ -151,6 +151,127 @@ export async function onRequest(context) {
   } catch (_) {}
 
   // ------------------------------------------------------------
+  // CLIENT PUBLISH SETUP (Article/Blog 74)
+  // If there are NO publish_targets for this location, email client with 2 options.
+  // Fail-open. Must never block accept.
+  // ------------------------------------------------------------
+  try {
+    const setupTask = (async () => {
+      try {
+        const locationId = String(review.location_id || "").trim();
+        const draftId = String(review.draft_id || "").trim();
+        const clientEmail = String(review.client_email || "").trim();
+
+        if (!locationId || !draftId || !clientEmail) {
+          console.log("PUBLISH_SETUP_SKIP_MISSING_FIELDS", { locationId, draftId, hasClientEmail: !!clientEmail });
+          return;
+        }
+
+        const hasTargets = await db.prepare(`
+          SELECT 1
+            FROM publish_targets
+           WHERE location_id = ?
+             AND (is_active = 1 OR is_active IS NULL)
+           LIMIT 1
+        `).bind(locationId).first();
+
+        if (hasTargets) {
+          console.log("PUBLISH_SETUP_SKIP_HAS_TARGETS", { locationId, draftId });
+          return;
+        }
+
+        // Create one-time setup token (hash stored in D1)
+        const rawToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+        const token_hash = await sha256Hex(`v1|publish_setup|${String(env.REVIEW_TOKEN_PEPPER || "")}|${rawToken}`);
+
+        // 7 days expiry (same style as review tokens)
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+        await db.prepare(`
+          INSERT INTO blog_publish_setup_tokens (token_hash, draft_id, location_id, client_email, expires_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).bind(token_hash, draftId, locationId, clientEmail, expiresAt).run();
+
+        // Upsert onboarding state
+        await db.prepare(`
+          INSERT INTO blog_publish_onboarding (location_id, mode, status, updated_at)
+          VALUES (?, NULL, 'NEEDS_SETUP', datetime('now'))
+          ON CONFLICT(location_id) DO UPDATE SET
+            status = 'NEEDS_SETUP',
+            updated_at = datetime('now')
+        `).bind(locationId).run();
+
+        // Pull business name for nicer email
+        const biz = await db.prepare(`
+          SELECT business_name_raw
+            FROM businesses
+           WHERE location_id = ?
+           LIMIT 1
+        `).bind(locationId).first();
+
+        const businessName = String(biz?.business_name_raw || "your business").trim();
+
+        // Canonical URLs
+        const apiBase = "https://api.admin.gnrmedia.global";
+        const setupUrl = `${apiBase}/publish/setup?t=${encodeURIComponent(rawToken)}`;
+
+        const html = `
+          <div style="font-family:Arial,sans-serif;line-height:1.55">
+            <h2>Next step: set up blog publishing for ${escapeHtml(businessName)}</h2>
+
+            <p>
+              Your draft has been approved — now we just need to confirm <b>how you want it uploaded</b>.
+              This ensures your content is published correctly and safely.
+            </p>
+
+            <h3>Option 1 — GNR uploads it for you (recommended)</h3>
+            <ol>
+              <li>Make sure <b>admin@gnrmedia.global</b> has <b>Administrator</b> access to your website.</li>
+              <li>Click the button below and submit your website’s <b>login page URL</b>.</li>
+              <li>Our team will then securely add the publishing credential and take care of uploads.</li>
+            </ol>
+
+            <h3>Option 2 — I’ll upload it myself</h3>
+            <p>
+              If you prefer, you can upload the approved content yourself using clear step-by-step instructions.
+              (You’ll choose this on the next page.)
+            </p>
+
+            <p style="margin:18px 0">
+              <a href="${setupUrl}"
+                 style="display:inline-block;background:#301b7f;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px">
+                 Choose Option 1 or Option 2
+              </a>
+            </p>
+
+            <p style="color:#666;font-size:12px">
+              This link expires in 7 days.
+            </p>
+          </div>
+        `;
+
+        await sendSendgridEmail(env, {
+          to: [clientEmail],
+          subject: `Action required: set up blog publishing — ${businessName}`,
+          html,
+        });
+
+        console.log("PUBLISH_SETUP_EMAIL_SENT", { locationId, draftId, clientEmail });
+
+      } catch (e) {
+        console.log("PUBLISH_SETUP_EMAIL_FAIL_OPEN", {
+          draft_id: review.draft_id,
+          location_id: review.location_id,
+          error: String(e?.message || e),
+        });
+      }
+    })();
+
+    if (waitUntil) waitUntil(setupTask);
+    else setupTask.catch(() => {});
+  } catch (_) {}
+
+  // ------------------------------------------------------------
   // TEAM NOTIFY (fail-open, async)
   // ------------------------------------------------------------
   try {

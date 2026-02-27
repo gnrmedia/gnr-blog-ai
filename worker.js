@@ -301,6 +301,52 @@ if (request.method === "GET" && pathname === "/assets/review-ui.js") {
 }
 
 // ------------------------------------------------------------
+// GET /publish/setup (PUBLIC client setup page)
+// ------------------------------------------------------------
+if (request.method === "GET" && pathname === "/publish/setup") {
+  const { onRequest } = await import("./functions/publish/setup/page.js");
+  return onRequest(context); // HTML response
+}
+
+// ------------------------------------------------------------
+// POST /api/blog/publish/setup/submit (PUBLIC)
+// ------------------------------------------------------------
+if (request.method === "POST" && pathname === "/api/blog/publish/setup/submit") {
+  const { onRequest } = await import("./functions/api/blog/publish/setup/submit.js");
+  return withCors(request, await onRequest(context));
+}
+
+// ------------------------------------------------------------
+// GET /api/blog/publish/setup/status (PUBLIC)
+// ------------------------------------------------------------
+if (request.method === "GET" && pathname === "/api/blog/publish/setup/status") {
+  const { onRequest } = await import("./functions/api/blog/publish/setup/status.js");
+  return withCors(request, await onRequest(context));
+}
+
+// ------------------------------------------------------------
+// GET /api/blog/publish/wordpress/credentials (ADMIN: staff password page)
+// ------------------------------------------------------------
+if (request.method === "GET" && pathname === "/api/blog/publish/wordpress/credentials") {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import("./functions/api/blog/publish/wordpress/credentials/page.js");
+  return onRequest(context); // HTML response (no JSON wrapper)
+}
+
+// ------------------------------------------------------------
+// POST /api/blog/publish/wordpress/credentials/save (ADMIN)
+// ------------------------------------------------------------
+if (request.method === "POST" && pathname === "/api/blog/publish/wordpress/credentials/save") {
+  const admin = await requireAdmin(context);
+  if (admin instanceof Response) return withCors(request, admin);
+
+  const { onRequest } = await import("./functions/api/blog/publish/wordpress/credentials/save.js");
+  return withCors(request, await onRequest(context));
+}
+
+// ------------------------------------------------------------
 // POST /api/blog/auto/run-location
 // ------------------------------------------------------------
 if (request.method === "POST" && pathname === "/api/blog/auto/run-location") {
