@@ -29,13 +29,16 @@ export async function onRequest(context){
   const db=env.GNR_MEDIA_BUSINESS_DB;
 
   const tok=await db.prepare(`
-    SELECT draft_id
+    SELECT draft_id, expires_at
       FROM blog_publish_setup_tokens
      WHERE token_hash = ?
      LIMIT 1
   `).bind(token_hash).first();
 
   if(!tok) return json({ok:false,error:"invalid_token"},404);
+
+  const expMs = Date.parse(String(tok.expires_at || ""));
+  if (!expMs || expMs <= Date.now()) return json({ ok:false, error:"expired" }, 410);
 
   const draft_id=tok.draft_id;
 

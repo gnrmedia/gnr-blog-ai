@@ -1868,9 +1868,48 @@ return jsonResponse(ctx, {
 // ============================================================
 export async function runNowForLocation(ctx, locationid) {
   const { env } = ctx;
+  const db = env.GNR_MEDIA_BUSINESS_DB;
 
   const loc = normaliseLocationId(locationid);
   if (!loc) return errorResponse(ctx, "location_id required", 400);
+  const locationId = loc;
+
+  // ------------------------------------------------------------
+  // PHASE 3: PUBLISH-COMPLETE GATE (Run Now)
+  // Block new draft generation if there is an approved draft not yet published.
+  // ------------------------------------------------------------
+  {
+    const pendingApproved = await findLatestApprovedUnpublishedDraft(db, locationId);
+    if (pendingApproved) {
+      console.log("GENERATION_BLOCKED_UNPUBLISHED_DRAFT", {
+        path: "runNowForLocation",
+        location_id: locationId,
+        draft_id: pendingApproved.draft_id,
+      });
+
+      // Fail-open reminder (never block handler from responding)
+      try {
+        await sendClientPublishReminder(env, db, {
+          locationId,
+          draftId: pendingApproved.draft_id,
+          title: pendingApproved.title,
+        });
+      } catch (e) {
+        console.log("PUBLISH_REMINDER_FAIL_OPEN", String(e?.message || e));
+      }
+
+      // Return a controlled response instead of generating (prevents AI spend)
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          blocked: true,
+          reason: "approved_draft_not_published",
+          draft_id: pendingApproved.draft_id,
+        }),
+        { status: 409, headers: { "content-type": "application/json; charset=utf-8" } }
+      );
+    }
+  }
 
   // Helper: unwrap a jsonResponse() Response into an object
   async function unwrapJson(resp) {
@@ -2636,6 +2675,96 @@ async function findLatestPendingReviewDraft(env, location_id) {
   return row?.draft_id ? row : null;
 }
 
+async function findLatestApprovedUnpublishedDraft(db, locationId) {
+  const row = await db.prepare(`
+    SELECT draft_id, title, approved_at, published_at, publish_status
+      FROM blog_drafts
+     WHERE location_id = ?
+       AND approved_at IS NOT NULL
+       AND (
+         published_at IS NULL
+         OR publish_status IS NULL
+         OR publish_status NOT LIKE 'PUBLISHED%'
+       )
+     ORDER BY approved_at DESC
+     LIMIT 1
+  `).bind(locationId).first();
+
+  return row ? {
+    draft_id: String(row.draft_id),
+    title: String(row.title || ""),
+  } : null;
+}
+
+// Mints a fresh confirm token every time so confirmation is always possible,
+// even if the original setup token was used earlier.
+async function mintPublishConfirmToken(env, db, { draftId, locationId, clientEmail }) {
+  const rawToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  const pepper = String(env.REVIEW_TOKEN_PEPPER || "");
+  const token_hash = await sha256Hex(`v1|publish_setup|${pepper}|${rawToken}`);
+
+  // 30 days expiry for publish confirmation (self-upload can take time)
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  await db.prepare(`
+    INSERT INTO blog_publish_setup_tokens (token_hash, draft_id, location_id, client_email, expires_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).bind(token_hash, draftId, locationId, clientEmail || null, expiresAt).run();
+
+  return rawToken;
+}
+
+async function sendClientPublishReminder(env, db, { locationId, draftId, title }) {
+  const biz = await db.prepare(`
+    SELECT business_name_raw, contact_email, blog_url
+      FROM businesses
+     WHERE location_id = ?
+     LIMIT 1
+  `).bind(locationId).first();
+
+  const toEmail = String(biz?.contact_email || "").trim();
+  if (!toEmail) return;
+
+  const businessName = String(biz?.business_name_raw || "your business").trim();
+  const blogUrl = String(biz?.blog_url || "").trim();
+
+  const token = await mintPublishConfirmToken(env, db, {
+    draftId,
+    locationId,
+    clientEmail: toEmail,
+  });
+
+  const confirmUrl = `https://api.admin.gnrmedia.global/publish/confirm?t=${encodeURIComponent(token)}`;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.55">
+      <h2>Quick check: is your last article live?</h2>
+      <p>
+        We’re ready to create your next article for <b>${escapeHtml(businessName)}</b>,
+        but first we need to confirm the last approved post has been published.
+      </p>
+
+      <p><b>Article:</b> ${escapeHtml(title || "Approved article")}</p>
+
+      <p style="margin:18px 0">
+        <a href="${confirmUrl}"
+           style="display:inline-block;background:#301b7f;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px">
+           Confirm Published
+        </a>
+      </p>
+
+      ${blogUrl ? `<p style="color:#666;font-size:12px">Your blog page: ${escapeHtml(blogUrl)}</p>` : ``}
+      <p style="color:#666;font-size:12px">If you haven’t published it yet, publish it first, then confirm using the button above.</p>
+    </div>
+  `;
+
+  await sendSendgridEmail(env, {
+    to: toEmail,
+    subject: `Action required: confirm your last blog post is live — ${businessName}`,
+    html,
+  });
+}
+
 // Re-send approval email by creating a fresh review link for the SAME draft (no AI cost).
 async function resendReviewEmailForDraft(ctx, draft_id) {
   const { env } = ctx;
@@ -2952,6 +3081,7 @@ export async function backfillBusinessWebsitesMaster(ctx, limit = 50) {
 // ---------- Editorial / auto cadence ----------
 export async function runAutoCadence(ctx, limit = 25) {
   const { env } = ctx;
+  const db = env.GNR_MEDIA_BUSINESS_DB;
 
   const lim = Math.min(Math.max(parseInt(String(limit || "25"), 10) || 25, 1), 200);
 
@@ -3066,6 +3196,37 @@ export async function runAutoCadence(ctx, limit = 25) {
       // If a draft is already out for review (not approved), do NOT generate a new one.
       // Instead: send a reminder email (new review link for the same draft).
       // ------------------------------------------------------------
+      // ------------------------------------------------------------
+      // PHASE 3: PUBLISH-COMPLETE GATE (Auto Cadence)
+      // ------------------------------------------------------------
+      const pendingApproved = await findLatestApprovedUnpublishedDraft(db, location_id);
+      if (pendingApproved) {
+        console.log("GENERATION_BLOCKED_UNPUBLISHED_DRAFT", {
+          path: "runAutoCadence",
+          location_id,
+          draft_id: pendingApproved.draft_id,
+        });
+
+        // Send reminder, then SKIP this location (do not generate)
+        try {
+          await sendClientPublishReminder(env, db, {
+            locationId: location_id,
+            draftId: pendingApproved.draft_id,
+            title: pendingApproved.title,
+          });
+        } catch (e) {
+          console.log("PUBLISH_REMINDER_FAIL_OPEN", String(e?.message || e));
+        }
+
+        out.skips.push({
+          location_id,
+          reason: "approved_draft_not_published_reminded",
+          draft_id: pendingApproved.draft_id,
+        });
+
+        continue;
+      }
+
       const pending = await findLatestPendingReviewDraft(env, location_id);
       if (pending?.draft_id) {
         const nudge = await resendReviewEmailForDraft(ctx, pending.draft_id);
